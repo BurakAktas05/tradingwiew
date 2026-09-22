@@ -381,16 +381,16 @@ html, body {
   overflow: hidden;
 }
 
-/* VIEW 1: TERMINAL GRID */
+/* VIEW 1: TERMINAL GRID (Fixed Screenshot Ratio: 63.5% Chart / 36.5% Copilot) */
 .terminal-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 6px minmax(260px, var(--copilot-width, 350px));
+  grid-template-columns: minmax(0, 1.74fr) 1px minmax(340px, 1fr);
   height: 100%;
   width: 100%;
   min-height: 0;
   min-width: 0;
   max-width: 100%;
-  transition: grid-template-columns 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: grid-template-columns 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   position: relative;
   overflow: hidden;
 }
@@ -404,44 +404,14 @@ html, body {
   display: none !important;
 }
 
-.terminal-grid.resizing {
-  user-select: none;
-  cursor: col-resize;
-  transition: none !important;
-}
-
-/* Draggable Splitter */
+/* Fixed Clean Divider Line */
 .terminal-resizer {
-  width: 6px;
+  width: 1px;
   height: 100%;
   background: var(--border);
-  cursor: col-resize;
   position: relative;
-  z-index: 20;
-  transition: background 0.15s ease;
+  z-index: 10;
   flex-shrink: 0;
-}
-
-.terminal-resizer::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 2px;
-  height: 24px;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 1px;
-}
-
-.terminal-resizer:hover,
-.terminal-resizer.active {
-  background: var(--accent-blue);
-}
-
-.terminal-resizer:hover::after,
-.terminal-resizer.active::after {
-  background: #fff;
 }
 
 .chart-column {
@@ -452,7 +422,6 @@ html, body {
   min-width: 0;
   max-width: 100%;
   background: var(--bg-deep);
-  border-right: 1px solid var(--border);
   position: relative;
   overflow: hidden;
 }

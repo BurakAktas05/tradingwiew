@@ -212,48 +212,10 @@ const terminalGrid = document.getElementById("terminalGrid");
 const copilotBtnText = document.getElementById("copilotBtnText");
 const terminalResizer = document.getElementById("terminalResizer");
 
-// Restore saved copilot width if available (clamped to screen)
-const savedCopilotWidth = localStorage.getItem("tradex_copilot_width");
-if (savedCopilotWidth && terminalGrid) {
-  const parsedWidth = parseInt(savedCopilotWidth, 10);
-  const maxAllowed = Math.max(260, Math.floor(window.innerWidth * 0.45));
-  if (!isNaN(parsedWidth) && parsedWidth >= 260) {
-    const safeWidth = Math.min(parsedWidth, maxAllowed);
-    terminalGrid.style.setProperty("--copilot-width", `${safeWidth}px`);
-  }
-}
-
-// Draggable Resizer Handler
-let isResizing = false;
-if (terminalResizer && terminalGrid) {
-  terminalResizer.addEventListener("mousedown", (e) => {
-    isResizing = true;
-    terminalGrid.classList.add("resizing");
-    terminalResizer.classList.add("active");
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-  });
-
-  window.addEventListener("mousemove", (e) => {
-    if (!isResizing) return;
-    const containerWidth = terminalGrid.getBoundingClientRect().width;
-    const newWidth = Math.max(260, Math.min(containerWidth - 250, window.innerWidth - e.clientX));
-    terminalGrid.style.setProperty("--copilot-width", `${newWidth}px`);
-  });
-
-  window.addEventListener("mouseup", () => {
-    if (isResizing) {
-      isResizing = false;
-      terminalGrid.classList.remove("resizing");
-      terminalResizer.classList.remove("active");
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-      const currentW = terminalGrid.style.getPropertyValue("--copilot-width");
-      if (currentW) {
-        localStorage.setItem("tradex_copilot_width", parseInt(currentW, 10));
-      }
-    }
-  });
+// Clear any previous pixel width override to ensure fixed screenshot ratio (63.5% / 36.5%)
+localStorage.removeItem("tradex_copilot_width");
+if (terminalGrid) {
+  terminalGrid.style.removeProperty("--copilot-width");
 }
 
 if (toggleCopilotBtn && terminalGrid) {
@@ -263,6 +225,10 @@ if (toggleCopilotBtn && terminalGrid) {
     if (copilotBtnText) {
       copilotBtnText.textContent = isCollapsed ? "Asistanı Göster" : "Asistanı Gizle";
     }
+    // Smoothly re-render TradingView widget dimensions after grid animation
+    setTimeout(() => {
+      window.dispatchEvent(new Event("resize"));
+    }, 260);
   });
 }
 
