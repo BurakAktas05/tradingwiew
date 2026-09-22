@@ -265,7 +265,109 @@ function calculateBB(closes, period = 20, mult = 2) {
   };
 }
 
+async function fallbackKucoinAnalysis(rawSymbol, interval = "15m") {
+  let kuInterval = "15min";
+  if (interval === "1h") kuInterval = "1hour";
+  if (interval === "1D" || interval === "1d") kuInterval = "1day";
+
+  let kuSym = (rawSymbol || "BTCUSDT").toUpperCase().replace(/.*:/, "");
+  if (!kuSym.includes("-")) {
+    if (kuSym.endsWith("USDT")) kuSym = kuSym.replace(/USDT$/, "-USDT");
+    else kuSym = `${kuSym}-USDT`;
+  }
+
+  console.log(`[Fallback] Fetching KuCoin live market & technical data for ${kuSym}...`);
+  const [statsRes, candlesRes] = await Promise.all([
+    fetch(`https://api.kucoin.com/api/v1/market/stats?symbol=${kuSym}`),
+    fetch(`https://api.kucoin.com/api/v1/market/candles?type=${kuInterval}&symbol=${kuSym}`),
+  ]);
+
+  const statsJson = await statsRes.json();
+  const candlesJson = await candlesRes.json();
+
+  if (statsJson.code !== "200000" || !statsJson.data) {
+    throw new Error(`KuCoin stats failed for ${kuSym}: ${statsJson.msg || "not found"}`);
+  }
+  if (candlesJson.code !== "200000" || !Array.isArray(candlesJson.data) || candlesJson.data.length === 0) {
+    throw new Error(`KuCoin candles failed for ${kuSym}: ${candlesJson.msg || "no candles"}`);
+  }
+
+  const stats = statsJson.data;
+  // Kucoin candles are [time, open, close, high, low, volume, turnover] in reverse order (newest first)
+  const candles = [...candlesJson.data].reverse();
+  const closes = candles.map((c) => Number(c[2]));
+  const highs = candles.map((c) => Number(c[3]));
+  const lows = candles.map((c) => Number(c[4]));
+
+  const currentPrice = Number(stats.last);
+  const rsi = calculateRSI(closes, 14);
+  const macd = calculateMACD(closes);
+  const bb = calculateBB(closes, 20, 2);
+  const ema20 = calculateEMA(closes, 20);
+  const ema50 = calculateEMA(closes, 50);
+
+  const lastHigh = highs[highs.length - 2] || currentPrice;
+  const lastLow = lows[lows.length - 2] || currentPrice;
+  const lastClose = closes[closes.length - 2] || currentPrice;
+  const pivot = Number(((lastHigh + lastLow + lastClose) / 3).toFixed(2));
+  const r1 = Number((2 * pivot - lastLow).toFixed(2));
+  const s1 = Number((2 * pivot - lastHigh).toFixed(2));
+
+  let bias = "NEUTRAL";
+  if (rsi > 55 && currentPrice > ema20) bias = "BUY";
+  if (rsi > 68 && currentPrice > ema20 && ema20 > ema50) bias = "STRONG_BUY";
+  if (rsi < 45 && currentPrice < ema20) bias = "SELL";
+  if (rsi < 32 && currentPrice < ema20 && ema20 < ema50) bias = "STRONG_SELL";
+
+  return {
+    success: true,
+    source: "KuCoin Real-Time Data (Instant Cloud Engine)",
+    symbol: kuSym.replace("-", ""),
+    exchange: "KUCOIN",
+    price_data: {
+      current_price: currentPrice,
+      change_percent: Number((Number(stats.changeRate || 0) * 100).toFixed(2)),
+      high_24h: Number(stats.high || currentPrice),
+      low_24h: Number(stats.low || currentPrice),
+      volume_24h: Number(stats.vol || 0),
+      quote_volume_24h: Math.round(Number(stats.volValue || 0)),
+    },
+    technical_indicators: {
+      oscillators: {
+        rsi_14: rsi,
+        macd: macd,
+      },
+      moving_averages: {
+        ema_20: ema20,
+        ema_50: ema50,
+      },
+    },
+    bollinger_bands: bb,
+    support_resistance: {
+      pivot,
+      resistance_1: r1,
+      support_1: s1,
+    },
+    summary: {
+      recommendation: bias,
+    },
+    timeframe_context: {
+      bias,
+    },
+  };
+}
+
 async function fallbackCoinAnalysis(rawSymbol, exchange = "BINANCE", interval = "15m") {
+  const isKucoin = (exchange || "").toUpperCase() === "KUCOIN";
+  if (isKucoin) {
+    try {
+      return await fallbackKucoinAnalysis(rawSymbol, interval);
+    } catch (err) {
+      console.warn(`[Fallback] KuCoin analysis failed: ${err.message}, trying Yahoo Finance...`);
+      return await fallbackYahooFinance(rawSymbol);
+    }
+  }
+
   let cleanSym = (rawSymbol || "BTCUSDT").toUpperCase().replace(/.*:/, "");
   if (!cleanSym.endsWith("USDT") && !cleanSym.endsWith("TRY") && !cleanSym.endsWith("BUSD") && !cleanSym.endsWith("BTC")) {
     cleanSym += "USDT";
@@ -279,6 +381,7 @@ async function fallbackCoinAnalysis(rawSymbol, exchange = "BINANCE", interval = 
 
     const klinesRes = await fetch(`https://api.binance.com/api/v3/klines?symbol=${cleanSym}&interval=${interval}&limit=100`);
     const klines = await klinesRes.json();
+    if (!Array.isArray(klines)) throw new Error("Binance klines is not an array");
 
     const closes = klines.map((k) => Number(k[4]));
     const highs = klines.map((k) => Number(k[2]));
@@ -341,14 +444,20 @@ async function fallbackCoinAnalysis(rawSymbol, exchange = "BINANCE", interval = 
       },
     };
   } catch (err) {
-    console.warn(`[Fallback] Analysis failed for ${cleanSym}, trying Yahoo Finance...`);
-    return await fallbackYahooFinance(rawSymbol);
+    console.warn(`[Fallback] Binance analysis failed for ${cleanSym} (${err.message}), trying KuCoin...`);
+    try {
+      return await fallbackKucoinAnalysis(cleanSym, interval);
+    } catch (kErr) {
+      console.warn(`[Fallback] KuCoin analysis also failed (${kErr.message}), trying Yahoo Finance...`);
+      return await fallbackYahooFinance(rawSymbol);
+    }
   }
 }
 
 async function fallbackYahooFinance(rawSymbol) {
   let sym = (rawSymbol || "").toUpperCase().replace(/.*:/, "");
   if (sym === "XAUUSD" || sym === "GOLD" || sym === "ALTIN") sym = "GC=F";
+  if (sym.endsWith("USDT")) sym = sym.replace(/USDT$/, "-USD");
   if (["THYAO", "ASELS", "GARAN", "KCHOL", "ISCTR", "EREGL", "TUPRS", "BIMAS"].includes(sym)) {
     sym = `${sym}.IS`;
   }
@@ -507,10 +616,112 @@ async function fallbackMarketSnapshot() {
   }
 }
 
+async function fallbackKucoinScanner(type, limit = 20) {
+  console.log(`[Fallback] Running KuCoin market scanner for ${type} (limit: ${limit})...`);
+  const res = await fetch("https://api.kucoin.com/api/v1/market/allTickers");
+  if (!res.ok) throw new Error(`KuCoin API returned ${res.status}: ${res.statusText}`);
+  const json = await res.json();
+  if (!json.data || !Array.isArray(json.data.ticker)) {
+    throw new Error(json.msg || "KuCoin API did not return ticker array");
+  }
+
+  const usdtPairs = json.data.ticker.filter(
+    (t) => t && t.symbol && t.symbol.endsWith("-USDT") && Number(t.volValue) > 200000 && !t.symbol.includes("3L") && !t.symbol.includes("3S")
+  );
+
+  let sorted = [];
+  if (type === "top_gainers") {
+    sorted = usdtPairs.sort((a, b) => Number(b.changeRate) - Number(a.changeRate)).slice(0, limit);
+  } else if (type === "top_losers") {
+    sorted = usdtPairs.sort((a, b) => Number(a.changeRate) - Number(b.changeRate)).slice(0, limit);
+  } else {
+    // volume_breakout / volume scanner / bollinger
+    sorted = usdtPairs.sort((a, b) => Number(b.volValue) - Number(a.volValue)).slice(0, limit);
+  }
+
+  return {
+    success: true,
+    source: "KuCoin Live Scanner (Cloud Engine)",
+    count: sorted.length,
+    items: sorted.map((t) => ({
+      symbol: t.symbol.replace("-", ""),
+      price: Number(t.last),
+      change_24h_percent: Number((Number(t.changeRate) * 100).toFixed(2)),
+      volume_24h: Math.round(Number(t.volValue)),
+      volume: Math.round(Number(t.volValue)),
+      high_24h: Number(t.high),
+      low_24h: Number(t.low),
+    })),
+  };
+}
+
+async function fallbackStockScanner(exchange = "NASDAQ", type = "top_gainers", limit = 15) {
+  const isBist = (exchange || "").toUpperCase() === "BIST";
+  const symbols = isBist
+    ? ["THYAO.IS", "ASELS.IS", "GARAN.IS", "KCHOL.IS", "ISCTR.IS", "EREGL.IS", "TUPRS.IS", "BIMAS.IS", "AKBNK.IS", "SISE.IS", "SAHOL.IS", "FROTO.IS", "YKBNK.IS"]
+    : ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AMD", "NFLX", "INTC", "AVGO", "QCOM", "COST"];
+
+  const results = await Promise.allSettled(
+    symbols.map(async (sym) => {
+      const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${sym}?interval=1d&range=2d`, {
+        headers: { "User-Agent": "Mozilla/5.0" },
+      });
+      const data = await res.json();
+      const meta = data.chart.result[0].meta;
+      const price = Number(meta.regularMarketPrice || meta.chartPreviousClose || 0);
+      const prev = Number(meta.chartPreviousClose || price);
+      const chg = Number((((price - prev) / (prev || 1)) * 100).toFixed(2));
+      return {
+        symbol: isBist ? sym.replace(".IS", "") : sym,
+        price,
+        change_24h_percent: chg,
+        volume_24h: Number(meta.regularMarketVolume || 0),
+        volume: Number(meta.regularMarketVolume || 0),
+      };
+    })
+  );
+
+  let items = results
+    .filter((r) => r.status === "fulfilled" && r.value)
+    .map((r) => r.value);
+
+  if (type === "top_gainers") {
+    items.sort((a, b) => b.change_24h_percent - a.change_24h_percent);
+  } else if (type === "top_losers") {
+    items.sort((a, b) => a.change_24h_percent - b.change_24h_percent);
+  } else {
+    items.sort((a, b) => b.volume_24h - a.volume_24h);
+  }
+
+  return {
+    success: true,
+    source: `${isBist ? "BIST" : "NASDAQ"} Market Scanner (Yahoo Finance Engine)`,
+    count: items.length,
+    items: items.slice(0, limit),
+  };
+}
+
 async function fallbackMarketScanner(type, args = {}) {
   const limit = args.limit || 20;
-  console.log(`[Fallback] Running market scanner for ${type} (limit: ${limit})...`);
+  const exchange = (args.exchange || "BINANCE").toUpperCase();
+  console.log(`[Fallback] Running market scanner for ${type} on ${exchange} (limit: ${limit})...`);
 
+  // 1. If stock exchange requested (NASDAQ or BIST)
+  if (exchange === "NASDAQ" || exchange === "BIST") {
+    try {
+      return await fallbackStockScanner(exchange, type, limit);
+    } catch (err) {
+      console.warn(`[Fallback] Stock scanner failed: ${err.message}, switching to KuCoin crypto...`);
+      return await fallbackKucoinScanner(type, limit);
+    }
+  }
+
+  // 2. If KuCoin explicitly requested
+  if (exchange === "KUCOIN") {
+    return await fallbackKucoinScanner(type, limit);
+  }
+
+  // 3. Default to Binance, with automatic instant failover to KuCoin if Binance is blocked or down
   try {
     const res = await fetch("https://api.binance.com/api/v3/ticker/24hr");
     if (!res.ok) {
@@ -518,9 +729,7 @@ async function fallbackMarketScanner(type, args = {}) {
     }
     const tickers = await res.json();
 
-    // CRITICAL FIX: Binance may return an error object instead of an array
     if (!Array.isArray(tickers)) {
-      console.warn("[Fallback] Binance returned non-array response:", JSON.stringify(tickers).slice(0, 200));
       throw new Error(tickers.msg || tickers.message || "Binance API did not return ticker array");
     }
 
@@ -546,14 +755,15 @@ async function fallbackMarketScanner(type, args = {}) {
         symbol: t.symbol,
         price: Number(t.lastPrice),
         change_24h_percent: Number(t.priceChangePercent),
-        volume_24h_usdt: Math.round(Number(t.quoteVolume)),
+        volume_24h: Math.round(Number(t.quoteVolume)),
+        volume: Math.round(Number(t.quoteVolume)),
         high_24h: Number(t.highPrice),
         low_24h: Number(t.lowPrice),
       })),
     };
   } catch (err) {
-    console.error("[Fallback] Scanner error:", err.message);
-    return { error: err.message };
+    console.warn(`[Fallback] Binance scanner failed (${err.message}), seamlessly switching to KuCoin cloud scanner...`);
+    return await fallbackKucoinScanner(type, limit);
   }
 }
 
