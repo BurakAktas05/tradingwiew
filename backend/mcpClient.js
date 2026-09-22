@@ -201,12 +201,51 @@ function calculateEMA(closes, period) {
   }
   return Number(ema.toFixed(2));
 }
+// Calculate EMA as a full series (returns array of EMA values)
+function calculateEMASeries(data, period) {
+  if (!data || data.length < period) return data ? [...data] : [];
+  const k = 2 / (period + 1);
+  const emaSeries = new Array(period - 1).fill(null);
+  let ema = data.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  emaSeries.push(ema);
+  for (let i = period; i < data.length; i++) {
+    ema = data[i] * k + ema * (1 - k);
+    emaSeries.push(ema);
+  }
+  return emaSeries;
+}
 
 function calculateMACD(closes) {
-  const ema12 = calculateEMA(closes, 12);
-  const ema26 = calculateEMA(closes, 26);
-  const macd = Number((ema12 - ema26).toFixed(2));
-  return { macd, signal: Number((macd * 0.85).toFixed(2)), hist: Number((macd * 0.15).toFixed(2)) };
+  if (!closes || closes.length < 26) {
+    return { macd: 0, signal: 0, hist: 0 };
+  }
+
+  // Calculate full EMA12 and EMA26 series
+  const ema12Series = calculateEMASeries(closes, 12);
+  const ema26Series = calculateEMASeries(closes, 26);
+
+  // MACD line = EMA12 - EMA26 (only where both exist)
+  const macdSeries = [];
+  for (let i = 0; i < closes.length; i++) {
+    if (ema12Series[i] !== null && ema26Series[i] !== null) {
+      macdSeries.push(ema12Series[i] - ema26Series[i]);
+    }
+  }
+
+  if (macdSeries.length === 0) {
+    return { macd: 0, signal: 0, hist: 0 };
+  }
+
+  // Signal line = EMA(9) of MACD series
+  const signalSeries = calculateEMASeries(macdSeries, 9);
+
+  const macdVal = Number(macdSeries[macdSeries.length - 1].toFixed(4));
+  const signalVal = signalSeries[signalSeries.length - 1] !== null
+    ? Number(signalSeries[signalSeries.length - 1].toFixed(4))
+    : 0;
+  const histVal = Number((macdVal - signalVal).toFixed(4));
+
+  return { macd: macdVal, signal: signalVal, hist: histVal };
 }
 
 function calculateBB(closes, period = 20, mult = 2) {
@@ -341,6 +380,17 @@ async function fallbackYahooFinance(rawSymbol) {
     if (rsi > 55 && currentPrice > ema20) bias = "BUY";
     if (rsi > 68 && currentPrice > ema20) bias = "STRONG_BUY";
     if (rsi < 45 && currentPrice < ema20) bias = "SELL";
+    if (rsi < 32 && currentPrice < ema20 && ema20 < ema50) bias = "STRONG_SELL";
+
+    // Calculate real pivot-based support/resistance from available data
+    const highs = (quotes.high || []).filter((h) => h !== null);
+    const lowsArr = (quotes.low || []).filter((l) => l !== null);
+    const lastHigh = highs.length > 1 ? highs[highs.length - 2] : currentPrice * 1.01;
+    const lastLow = lowsArr.length > 1 ? lowsArr[lowsArr.length - 2] : currentPrice * 0.99;
+    const lastClose = closes.length > 1 ? closes[closes.length - 2] : currentPrice;
+    const pivot = Number(((lastHigh + lastLow + lastClose) / 3).toFixed(2));
+    const r1 = Number((2 * pivot - lastLow).toFixed(2));
+    const s1 = Number((2 * pivot - lastHigh).toFixed(2));
 
     return {
       success: true,
@@ -361,9 +411,9 @@ async function fallbackYahooFinance(rawSymbol) {
       },
       bollinger_bands: bb,
       support_resistance: {
-        pivot: currentPrice,
-        resistance_1: Number((currentPrice * 1.03).toFixed(2)),
-        support_1: Number((currentPrice * 0.97).toFixed(2)),
+        pivot,
+        resistance_1: r1,
+        support_1: s1,
       },
       summary: { recommendation: bias },
       timeframe_context: { bias },
@@ -428,12 +478,28 @@ async function fallbackMarketSnapshot() {
       } catch (e) {}
     }
 
+    // Generate dynamic sentiment from actual data
+    let bullCount = 0;
+    let bearCount = 0;
+    results.forEach((r) => {
+      if (r.change_24h_percent > 0) bullCount++;
+      else if (r.change_24h_percent < 0) bearCount++;
+    });
+    let sentimentSummary;
+    if (bullCount > bearCount) {
+      sentimentSummary = `Takip edilen ${results.length} varlıktan ${bullCount} tanesi yükselişte. Piyasalarda genel olarak pozitif bir hava hakim.`;
+    } else if (bearCount > bullCount) {
+      sentimentSummary = `Takip edilen ${results.length} varlıktan ${bearCount} tanesi düşüşte. Piyasalarda temkinli bir hava gözlemleniyor.`;
+    } else {
+      sentimentSummary = `Piyasalarda karışık sinyaller var. Yükselenler ve düşenler dengeli seyrediyor.`;
+    }
+
     return {
       success: true,
       source: "Live Multi-Market Cloud Engine",
       timestamp: new Date().toISOString(),
       market_overview: results,
-      sentiment_summary: "Piyasalarda genel risk iştahı pozitif ve hacimler güçlü seyrediyor.",
+      sentiment_summary: sentimentSummary,
     };
   } catch (err) {
     console.error("[Fallback] Snapshot error:", err.message);
