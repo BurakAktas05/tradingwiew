@@ -551,10 +551,14 @@ function renderScreenerResults(result) {
     return;
   }
 
+  const activeExchange = (document.getElementById("screenerExchange")?.value || "BINANCE").toUpperCase();
+
   items.slice(0, 30).forEach((item) => {
     const tr = document.createElement("tr");
     const rawSym = item.symbol || item.coin || "---";
-    const cleanSym = rawSym.replace(/.*:/, "");
+    const cleanSym = rawSym.replace(/.*:/, "").replace("-", "").replace(".IS", "");
+    const itemEx = (item.exchange || (rawSym.includes(":") ? rawSym.split(":")[0] : activeExchange)).toUpperCase();
+    const fullSym = item.full_symbol || (rawSym.includes(":") ? rawSym : `${itemEx}:${cleanSym}`);
     
     // Price
     const ind = item.indicators || {};
@@ -616,7 +620,10 @@ function renderScreenerResults(result) {
     }
 
     tr.innerHTML = `
-      <td><strong>${rawSym}</strong></td>
+      <td>
+        <span style="font-weight: 700; font-size: 13px;">${cleanSym}</span>
+        <span style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.08); color: var(--text-dim); margin-left: 6px; font-weight: 600; text-transform: uppercase;">${itemEx}</span>
+      </td>
       <td style="font-family: var(--font-mono);">${formattedPrice}</td>
       <td style="color: ${isUp ? 'var(--bullish)' : 'var(--bearish)'}; font-weight: 700; font-family: var(--font-mono);">
         ${isUp ? '+' : ''}${chg.toFixed(2)}%
@@ -624,19 +631,73 @@ function renderScreenerResults(result) {
       <td style="font-family: var(--font-mono);">${formattedVol}</td>
       <td>${techStatus}</td>
       <td>
-        <button class="primary-btn" style="padding: 4px 12px; font-size: 11px;" onclick="selectAndSwitchToChart('${rawSym}')">Grafik</button>
+        <button class="primary-btn" style="padding: 4px 12px; font-size: 11px;" onclick="selectAndSwitchToChart('${fullSym}', '${itemEx}')">Grafik</button>
       </td>
     `;
     tbody.appendChild(tr);
   });
 }
 
-function selectAndSwitchToChart(rawSym) {
-  const ex = rawSym.includes(":") ? rawSym.split(":")[0] : "BINANCE";
-  const short = rawSym.replace(/.*:/, "");
-  const full = rawSym.includes(":") ? rawSym : `BINANCE:${rawSym}`;
+function detectExchange(sym) {
+  if (!sym) return "BINANCE";
+  const s = sym.toUpperCase().trim().replace(/.*:/, "").replace("-", "").replace(".IS", "");
+
+  // BIST stocks
+  const bistStocks = [
+    "THYAO", "ASELS", "GARAN", "KCHOL", "ISCTR", "EREGL", "TUPRS", "BIMAS",
+    "AKBNK", "SISE", "SAHOL", "FROTO", "YKBNK", "PGSUS", "PETKM", "TCELL",
+    "ENKAI", "TOASO", "HEKTS", "SASA", "KOZAL", "GUBRF", "KOZAA", "ARCLK"
+  ];
+  if (bistStocks.includes(s) || sym.toUpperCase().endsWith(".IS")) {
+    return "BIST";
+  }
+
+  // US Stocks / NASDAQ
+  const usStocks = [
+    "AAPL", "MSFT", "NVDA", "GOOGL", "GOOG", "AMZN", "META", "TSLA", "AMD",
+    "NFLX", "INTC", "AVGO", "QCOM", "COST", "COIN", "PLTR", "UBER", "DIS",
+    "BABA", "BA", "PYPL", "SBUX", "CRM", "NKE"
+  ];
+  if (usStocks.includes(s)) {
+    return "NASDAQ";
+  }
+
+  // Commodities
+  if (s === "XAUUSD" || s === "GOLD" || s === "ALTIN" || s === "GC=F") {
+    return "OANDA";
+  }
+
+  const screenerEx = document.getElementById("screenerExchange")?.value;
+  if (screenerEx) return screenerEx.toUpperCase();
+
+  return "BINANCE";
+}
+
+function selectAndSwitchToChart(rawSym, exchangeHint) {
+  if (!rawSym || rawSym === "---") return;
+
+  let full = rawSym.trim().toUpperCase();
+  let ex = (exchangeHint || "").toUpperCase();
+  let short = full;
+
+  if (full.includes(":")) {
+    const parts = full.split(":");
+    ex = parts[0];
+    short = parts[1];
+  } else {
+    if (!ex) {
+      ex = detectExchange(full);
+    }
+    short = full.replace("-", "").replace(".IS", "");
+    full = `${ex}:${short}`;
+  }
+
+  short = short.replace("-", "").replace(".IS", "");
+
   setSymbol(full, short, ex);
-  document.querySelector('[data-view="view-terminal"]').click();
+
+  const terminalTab = document.querySelector('[data-view="view-terminal"]');
+  if (terminalTab) terminalTab.click();
 }
 
 // -------------------------------------------------------------
@@ -1025,16 +1086,7 @@ symbolSearchInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") {
     const val = symbolSearchInput.value.trim().toUpperCase();
     if (val) {
-      let full = val;
-      let ex = "BINANCE";
-      if (val.includes(":")) {
-        const parts = val.split(":");
-        ex = parts[0];
-        full = val;
-      } else {
-        full = `BINANCE:${val}`;
-      }
-      setSymbol(full, val.replace(/.*:/, ""), ex);
+      selectAndSwitchToChart(val);
       symbolSearchInput.value = "";
     }
   }

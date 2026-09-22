@@ -385,18 +385,32 @@ async function fallbackKucoinAnalysis(rawSymbol, interval = "15m") {
 }
 
 async function fallbackCoinAnalysis(rawSymbol, exchange = "BINANCE", interval = "15m") {
-  const isKucoin = (exchange || "").toUpperCase() === "KUCOIN";
+  const ex = (exchange || "BINANCE").toUpperCase();
+  const isKucoin = ex === "KUCOIN";
+  const isBist = ex === "BIST" || (rawSymbol && rawSymbol.toUpperCase().endsWith(".IS"));
+  const isStock = ex === "NASDAQ" || ex === "NYSE" || isBist;
+
+  // 1. If stock or BIST, directly use Yahoo Finance engine
+  if (isStock) {
+    try {
+      return await fallbackYahooFinance(rawSymbol, isBist);
+    } catch (err) {
+      console.warn(`[Fallback] Stock analysis failed for ${rawSymbol}:`, err.message);
+    }
+  }
+
+  // 2. If KuCoin explicitly requested
   if (isKucoin) {
     try {
       return await fallbackKucoinAnalysis(rawSymbol, interval);
     } catch (err) {
       console.warn(`[Fallback] KuCoin analysis failed: ${err.message}, trying Yahoo Finance...`);
-      return await fallbackYahooFinance(rawSymbol);
+      return await fallbackYahooFinance(rawSymbol, false);
     }
   }
 
-  let cleanSym = (rawSymbol || "BTCUSDT").toUpperCase().replace(/.*:/, "");
-  if (!cleanSym.endsWith("USDT") && !cleanSym.endsWith("TRY") && !cleanSym.endsWith("BUSD") && !cleanSym.endsWith("BTC")) {
+  let cleanSym = (rawSymbol || "BTCUSDT").toUpperCase().replace(/.*:/, "").replace(".IS", "");
+  if (!cleanSym.endsWith("USDT") && !cleanSym.endsWith("TRY") && !cleanSym.endsWith("BUSD") && !cleanSym.endsWith("BTC") && !isStock) {
     cleanSym += "USDT";
   }
 
@@ -481,11 +495,13 @@ async function fallbackCoinAnalysis(rawSymbol, exchange = "BINANCE", interval = 
   }
 }
 
-async function fallbackYahooFinance(rawSymbol) {
+async function fallbackYahooFinance(rawSymbol, forceBist = false) {
   let sym = (rawSymbol || "").toUpperCase().replace(/.*:/, "");
   if (sym === "XAUUSD" || sym === "GOLD" || sym === "ALTIN") sym = "GC=F";
   if (sym.endsWith("USDT")) sym = sym.replace(/USDT$/, "-USD");
-  if (["THYAO", "ASELS", "GARAN", "KCHOL", "ISCTR", "EREGL", "TUPRS", "BIMAS"].includes(sym)) {
+  const bistStocks = ["THYAO", "ASELS", "GARAN", "KCHOL", "ISCTR", "EREGL", "TUPRS", "BIMAS", "AKBNK", "SISE", "SAHOL", "FROTO", "YKBNK", "PGSUS", "PETKM", "TCELL"];
+  const isBist = forceBist || bistStocks.includes(sym) || sym.endsWith(".IS");
+  if (isBist && !sym.endsWith(".IS")) {
     sym = `${sym}.IS`;
   }
 
@@ -672,8 +688,11 @@ async function fallbackKucoinScanner(type, limit = 20) {
     count: sorted.length,
     items: sorted.map((t) => {
       const chg = Number((Number(t.changeRate) * 100).toFixed(2));
+      const cleanSym = t.symbol.replace("-", "");
       return {
-        symbol: t.symbol.replace("-", ""),
+        symbol: cleanSym,
+        full_symbol: `KUCOIN:${cleanSym}`,
+        exchange: "KUCOIN",
         price: Number(t.last),
         change_24h_percent: chg,
         changePercent: chg,
@@ -703,8 +722,12 @@ async function fallbackStockScanner(exchange = "NASDAQ", type = "top_gainers", l
       const price = Number(meta.regularMarketPrice || meta.chartPreviousClose || 0);
       const prev = Number(meta.chartPreviousClose || price);
       const chg = Number((((price - prev) / (prev || 1)) * 100).toFixed(2));
+      const cleanSym = isBist ? sym.replace(".IS", "") : sym;
+      const ex = isBist ? "BIST" : "NASDAQ";
       return {
-        symbol: isBist ? sym.replace(".IS", "") : sym,
+        symbol: cleanSym,
+        full_symbol: `${ex}:${cleanSym}`,
+        exchange: ex,
         price,
         change_24h_percent: chg,
         changePercent: chg,
@@ -789,6 +812,8 @@ async function fallbackMarketScanner(type, args = {}) {
         const chg = Number(t.priceChangePercent);
         return {
           symbol: t.symbol,
+          full_symbol: `BINANCE:${t.symbol}`,
+          exchange: "BINANCE",
           price: Number(t.lastPrice),
           change_24h_percent: chg,
           changePercent: chg,
