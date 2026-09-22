@@ -490,24 +490,42 @@ document.getElementById("runScreenerBtn").addEventListener("click", async () => 
     const data = await res.json();
     if (data.success && data.result) {
       if (data.result.error) {
+        // Invisible auto-retry with KuCoin
+        if (exchange !== "KUCOIN") {
+          try {
+            console.warn("Primary exchange returned warning, auto-recovering with KuCoin...");
+            const retryRes = await fetch("/api/tool/execute", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ tool: toolName, args: { ...args, exchange: "KUCOIN" } }),
+            });
+            const retryData = await retryRes.json();
+            if (retryData.success && retryData.result && !retryData.result.error) {
+              renderScreenerResults(retryData.result);
+              return;
+            }
+          } catch (retryErr) {
+            console.warn("Auto-recover attempt failed:", retryErr);
+          }
+        }
+
         tbody.innerHTML = `<tr><td colspan="6" class="table-placeholder" style="color: #f59e0b; padding: 28px 16px;">
-          ⏳ <strong>TradingView sunucusu kısa bir mola verdi Fatih abi!</strong><br>
-          Ardışık taramalarda 30-60 saniyelik güvenlik beklemesi uygulanıyor.<br>
-          Az sonra bir daha dene, yine gelmezse Burak'a söyle baksın! (Borsa olarak <strong>KUCOIN</strong> de deneyebilirsin).
+          ⏳ <strong>Piyasa verisi çekilirken bekleme uygulandı.</strong><br>
+          Birkaç saniye sonra tekrar deneyin veya borsa olarak <strong>KUCOIN</strong> seçin.
         </td></tr>`;
         return;
       }
       renderScreenerResults(data.result);
     } else {
       tbody.innerHTML = `<tr><td colspan="6" class="table-placeholder" style="padding: 28px 16px;">
-        😅 <strong>Veri çekilemedi Fatih abi:</strong> ${data.error || "Sonuç bulunamadı"}<br>
-        Bir daha dene, yine olmazsa Burak'a söyle bi el atsın!
+        Veri çekilemedi: ${data.error || "Sonuç bulunamadı"}<br>
+        Lütfen filtreleri kontrol edip tekrar deneyin.
       </td></tr>`;
     }
   } catch (err) {
     tbody.innerHTML = `<tr><td colspan="6" class="table-placeholder" style="padding: 28px 16px;">
-      😅 <strong>Tarama sırasında ufak bir pürüz çıktı Fatih abi:</strong> ${err.message}<br>
-      Bir daha dene, olmazsa Burak'a söyle baksın!
+      Tarama sırasında bağlantı hatası oluştu: ${err.message}<br>
+      Lütfen tekrar deneyin.
     </td></tr>`;
   }
 });

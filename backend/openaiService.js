@@ -62,12 +62,27 @@ async function chatWithOpenAI(message, history = [], userApiKey = null) {
   while (iterations < maxIterations) {
     iterations++;
 
-    const response = await openai.chat.completions.create({
-      model,
-      messages,
-      tools: openAITools.length > 0 ? openAITools : undefined,
-      tool_choice: "auto",
-    });
+    let response;
+    try {
+      response = await openai.chat.completions.create({
+        model,
+        messages,
+        tools: openAITools.length > 0 ? openAITools : undefined,
+        tool_choice: "auto",
+      });
+    } catch (apiErr) {
+      if (model !== "gpt-4o-mini" && (apiErr.status === 429 || String(apiErr.message).includes("rate") || apiErr.status >= 500)) {
+        console.warn(`[OpenAI] ${model} unavailable (${apiErr.message}), falling back to gpt-4o-mini...`);
+        response = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages,
+          tools: openAITools.length > 0 ? openAITools : undefined,
+          tool_choice: "auto",
+        });
+      } else {
+        throw apiErr;
+      }
+    }
 
     const choice = response.choices[0];
     const assistantMessage = choice.message;

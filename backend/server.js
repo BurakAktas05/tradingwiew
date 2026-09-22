@@ -9,6 +9,14 @@ const { getFinancialNews } = require("./newsService");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+process.on("unhandledRejection", (reason, promise) => {
+  console.warn("[Process] Unhandled Rejection at:", promise, "reason:", reason);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("[Process] Uncaught Exception thrown:", err);
+});
+
 app.use(cors());
 app.use(express.json());
 

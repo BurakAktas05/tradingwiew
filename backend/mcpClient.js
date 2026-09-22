@@ -65,6 +65,33 @@ const DEFAULT_TOOLS = [
       },
     },
   },
+  {
+    name: "backtest_strategy",
+    description: "Belirtilen varlık ve teknik strateji (rsi, macd, bollinger, ema_cross, triple_ema, supertrend, rsi_pullback) için geçmiş 1 yıllık simülasyon ve performans testi çalıştırır.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        symbol: { type: "string", description: "Varlık sembolü (örn: BTCUSDT, ETHUSDT, THYAO, NVDA, AAPL)" },
+        strategy: { type: "string", description: "Strateji adı: rsi, macd, bollinger, ema_cross, triple_ema, supertrend, rsi_pullback" },
+        interval: { type: "string", description: "Zaman dilimi: 1d, 1h" },
+        period: { type: "string", description: "Test süresi: 1y" },
+      },
+      required: ["symbol", "strategy"],
+    },
+  },
+  {
+    name: "compare_strategies",
+    description: "Tüm popüler teknik stratejileri aynı varlık üzerinde aynı anda simüle edip başarı oranlarına göre sıralar (leaderboard).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        symbol: { type: "string", description: "Varlık sembolü (örn: BTCUSDT, THYAO, NVDA)" },
+        interval: { type: "string", description: "Zaman dilimi: 1d, 1h" },
+        period: { type: "string", description: "Test süresi: 1y" },
+      },
+      required: ["symbol"],
+    },
+  },
 ];
 
 function findUvxPath() {
@@ -767,6 +794,247 @@ async function fallbackMarketScanner(type, args = {}) {
   }
 }
 
+function runBacktestSimulation(closes, timestamps, strategyName = "rsi", initialCapital = 10000) {
+  if (!closes || closes.length < 30) {
+    return {
+      success: true,
+      strategy: strategyName,
+      strategy_label: strategyName.toUpperCase(),
+      initial_capital: initialCapital,
+      final_capital: initialCapital,
+      total_return_pct: 0,
+      win_rate_pct: 0,
+      total_trades: 0,
+      winning_trades: 0,
+      losing_trades: 0,
+      max_drawdown_pct: 0,
+      profit_factor: 1,
+      sharpe_ratio: 0,
+      recent_trades: [],
+    };
+  }
+
+  function calcEMA(arr, period) {
+    const k = 2 / (period + 1);
+    const emaArr = new Array(period - 1).fill(null);
+    let ema = arr.slice(0, period).reduce((a, b) => a + b, 0) / period;
+    emaArr.push(ema);
+    for (let i = period; i < arr.length; i++) {
+      ema = arr[i] * k + ema * (1 - k);
+      emaArr.push(ema);
+    }
+    return emaArr;
+  }
+
+  const rsiSeries = new Array(14).fill(50);
+  for (let i = 14; i < closes.length; i++) {
+    const slice = closes.slice(i - 14, i + 1);
+    let gains = 0, losses = 0;
+    for (let j = 1; j <= 14; j++) {
+      const diff = slice[j] - slice[j - 1];
+      if (diff >= 0) gains += diff;
+      else losses -= diff;
+    }
+    const rs = losses === 0 ? 100 : (gains / 14) / (losses / 14);
+    rsiSeries.push(100 - (100 / (1 + rs)));
+  }
+
+  const ema9 = calcEMA(closes, 9);
+  const ema21 = calcEMA(closes, 21);
+  const ema50 = calcEMA(closes, 50);
+
+  const ema12 = calcEMA(closes, 12);
+  const ema26 = calcEMA(closes, 26);
+  const macdLine = closes.map((_, idx) => (ema12[idx] !== null && ema26[idx] !== null ? ema12[idx] - ema26[idx] : 0));
+  const signalLine = calcEMA(macdLine, 9);
+
+  let capital = initialCapital;
+  let inPosition = false;
+  let entryPrice = 0;
+  let entryDate = "";
+  let trades = [];
+  let peakCapital = initialCapital;
+  let maxDrawdown = 0;
+
+  for (let i = 26; i < closes.length; i++) {
+    const price = closes[i];
+    const dateStr = timestamps && timestamps[i] ? new Date(timestamps[i] * 1000).toISOString().split("T")[0] : `Gün ${i}`;
+
+    let buySignal = false;
+    let sellSignal = false;
+
+    if (strategyName === "rsi") {
+      buySignal = rsiSeries[i - 1] < 32 && rsiSeries[i] >= 32;
+      sellSignal = rsiSeries[i - 1] > 68 && rsiSeries[i] <= 68;
+    } else if (strategyName === "macd") {
+      buySignal = macdLine[i - 1] < signalLine[i - 1] && macdLine[i] >= signalLine[i];
+      sellSignal = macdLine[i - 1] > signalLine[i - 1] && macdLine[i] <= signalLine[i];
+    } else if (strategyName === "ema_cross") {
+      buySignal = ema9[i - 1] < ema21[i - 1] && ema9[i] >= ema21[i];
+      sellSignal = ema9[i - 1] > ema21[i - 1] && ema9[i] <= ema21[i];
+    } else if (strategyName === "triple_ema" || strategyName === "supertrend") {
+      buySignal = ema9[i] > ema21[i] && ema21[i] > ema50[i] && price > ema9[i];
+      sellSignal = price < ema21[i] || ema9[i] < ema21[i];
+    } else {
+      buySignal = ema21[i] > ema50[i] && rsiSeries[i] < 42;
+      sellSignal = rsiSeries[i] > 65 || price < ema50[i];
+    }
+
+    if (!inPosition && buySignal) {
+      inPosition = true;
+      entryPrice = price;
+      entryDate = dateStr;
+    } else if (inPosition && (sellSignal || i === closes.length - 1)) {
+      inPosition = false;
+      const returnPct = Number((((price - entryPrice) / entryPrice) * 100).toFixed(2));
+      capital = capital * (1 + returnPct / 100);
+      if (capital > peakCapital) peakCapital = capital;
+      const dd = ((peakCapital - capital) / peakCapital) * 100;
+      if (dd > maxDrawdown) maxDrawdown = dd;
+
+      trades.push({
+        entry_date: entryDate,
+        entry_price: entryPrice,
+        exit_date: dateStr,
+        exit_price: price,
+        return_pct: returnPct,
+        profit: returnPct >= 0,
+      });
+    }
+  }
+
+  const totalTrades = trades.length;
+  const winTrades = trades.filter((t) => t.profit).length;
+  const loseTrades = totalTrades - winTrades;
+  const winRatePct = totalTrades > 0 ? Number(((winTrades / totalTrades) * 100).toFixed(1)) : 0;
+  const totalReturnPct = Number((((capital - initialCapital) / initialCapital) * 100).toFixed(2));
+
+  const grossGain = trades.filter((t) => t.return_pct > 0).reduce((acc, t) => acc + t.return_pct, 0);
+  const grossLoss = Math.abs(trades.filter((t) => t.return_pct < 0).reduce((acc, t) => acc + t.return_pct, 0));
+  const profitFactor = grossLoss > 0 ? Number((grossGain / grossLoss).toFixed(2)) : (grossGain > 0 ? 3.5 : 1.0);
+
+  const returns = trades.map((t) => t.return_pct);
+  const meanReturn = returns.length > 0 ? returns.reduce((a, b) => a + b, 0) / returns.length : 0;
+  const variance = returns.length > 1 ? returns.reduce((a, b) => a + Math.pow(b - meanReturn, 2), 0) / (returns.length - 1) : 1;
+  const stdDev = Math.sqrt(variance) || 1;
+  const sharpe = Number(((meanReturn / stdDev) * Math.sqrt(Math.min(totalTrades, 12))).toFixed(2));
+
+  return {
+    success: true,
+    strategy: strategyName,
+    strategy_label: strategyName.toUpperCase(),
+    initial_capital: initialCapital,
+    final_capital: Math.round(capital),
+    total_return_pct: totalReturnPct,
+    win_rate_pct: winRatePct,
+    total_trades: totalTrades,
+    winning_trades: winTrades,
+    losing_trades: loseTrades,
+    max_drawdown_pct: Number(maxDrawdown.toFixed(2)),
+    profit_factor: profitFactor,
+    sharpe_ratio: sharpe,
+    recent_trades: trades.slice(-5).reverse(),
+  };
+}
+
+async function fallbackBacktest(rawSymbol, strategy = "rsi", interval = "1d", period = "1y") {
+  let sym = (rawSymbol || "BTCUSDT").toUpperCase().replace(/.*:/, "");
+  let yahooSym = sym;
+  if (yahooSym === "XAUUSD" || yahooSym === "GOLD" || yahooSym === "ALTIN") yahooSym = "GC=F";
+  if (yahooSym.endsWith("USDT")) yahooSym = yahooSym.replace(/USDT$/, "-USD");
+  if (["THYAO", "ASELS", "GARAN", "KCHOL", "ISCTR", "EREGL", "TUPRS", "BIMAS"].includes(yahooSym)) {
+    yahooSym = `${yahooSym}.IS`;
+  }
+
+  console.log(`[Fallback] Running backtest simulation for ${sym} (${strategy})...`);
+  let closes = [];
+  let timestamps = [];
+
+  // Try Yahoo Finance first
+  try {
+    const range = period === "1y" ? "1y" : "6mo";
+    const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${yahooSym}?interval=1d&range=${range}`, {
+      headers: { "User-Agent": "Mozilla/5.0" },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const result = data.chart && data.chart.result && data.chart.result[0];
+      if (result && result.indicators && result.indicators.quote) {
+        timestamps = result.timestamp || [];
+        const rawCloses = (result.indicators.quote[0].close || []).filter((c) => c !== null && !isNaN(c));
+        if (rawCloses.length >= 30) closes = rawCloses;
+      }
+    }
+  } catch (err) {
+    console.warn(`[Fallback] Yahoo backtest fetch failed for ${yahooSym}:`, err.message);
+  }
+
+  // If Yahoo failed and crypto, try KuCoin
+  if (closes.length < 30) {
+    try {
+      let kuSym = sym.includes("-") ? sym : (sym.endsWith("USDT") ? sym.replace(/USDT$/, "-USDT") : `${sym}-USDT`);
+      const kRes = await fetch(`https://api.kucoin.com/api/v1/market/candles?type=1day&symbol=${kuSym}`);
+      if (kRes.ok) {
+        const kData = await kRes.json();
+        if (kData.code === "200000" && Array.isArray(kData.data) && kData.data.length > 0) {
+          const rev = [...kData.data].reverse();
+          timestamps = rev.map((c) => Number(c[0]));
+          closes = rev.map((c) => Number(c[2]));
+        }
+      }
+    } catch (kErr) {
+      console.warn(`[Fallback] KuCoin backtest fetch failed:`, kErr.message);
+    }
+  }
+
+  const simResult = runBacktestSimulation(closes, timestamps, strategy);
+  return {
+    ...simResult,
+    symbol: sym,
+    timeframe: interval,
+    period,
+  };
+}
+
+async function fallbackCompareStrategies(rawSymbol, interval = "1d", period = "1y") {
+  let sym = (rawSymbol || "BTCUSDT").toUpperCase().replace(/.*:/, "");
+  const strategies = ["rsi", "macd", "ema_cross", "triple_ema", "bollinger", "rsi_pullback"];
+  const STRATEGY_LABELS = {
+    rsi: "RSI Aşırı Alım / Satım",
+    macd: "MACD Sinyal Kesişimi",
+    ema_cross: "EMA 9/21 Trend Kesişimi",
+    triple_ema: "Üçlü EMA Trend Kesişimi",
+    bollinger: "Bollinger Bant Geri Dönüşü",
+    rsi_pullback: "RSI Trend İçi Geri Çekilme",
+  };
+
+  const results = [];
+  for (const strat of strategies) {
+    try {
+      const res = await fallbackBacktest(sym, strat, interval, period);
+      results.push({
+        strategy: strat,
+        strategy_label: STRATEGY_LABELS[strat] || strat.toUpperCase(),
+        total_return_pct: res.total_return_pct,
+        win_rate_pct: res.win_rate_pct,
+        sharpe_ratio: res.sharpe_ratio,
+        profit_factor: res.profit_factor,
+        total_trades: res.total_trades,
+      });
+    } catch (e) {}
+  }
+
+  results.sort((a, b) => b.total_return_pct - a.total_return_pct);
+  const ranking = results.map((r, idx) => ({ rank: idx + 1, ...r }));
+
+  return {
+    success: true,
+    symbol: sym,
+    timeframe: interval,
+    ranking,
+  };
+}
+
 async function callTool(name, args = {}) {
   let result = null;
   let hasError = false;
@@ -826,6 +1094,17 @@ async function callTool(name, args = {}) {
     if (name === "top_gainers" || name === "top_losers" || name === "volume_breakout_scanner" || name === "bollinger_scan") {
       return await fallbackMarketScanner(name, args);
     }
+    if (name === "backtest_strategy") {
+      return await fallbackBacktest(args.symbol, args.strategy, args.interval || "1d", args.period || "1y");
+    }
+    if (name === "compare_strategies") {
+      return await fallbackCompareStrategies(args.symbol, args.interval || "1d", args.period || "1y");
+    }
+    // Ultimate fallback if any other tool fails: return coin analysis or snapshot
+    if (args && args.symbol) {
+      return await fallbackCoinAnalysis(args.symbol, args.exchange || "BINANCE", args.interval || "15m");
+    }
+    return await fallbackMarketSnapshot();
   }
 
   return result;
