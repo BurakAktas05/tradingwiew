@@ -68,9 +68,19 @@ const DEFAULT_TOOLS = [
 ];
 
 function findUvxPath() {
-  const localBin = path.join(process.env.USERPROFILE || "", ".local", "bin", "uvx.exe");
+  const isWindows = process.platform === "win32";
+  const homeDir = process.env.USERPROFILE || process.env.HOME || "";
+  const ext = isWindows ? ".exe" : "";
+  const localBin = path.join(homeDir, ".local", "bin", `uvx${ext}`);
   if (fs.existsSync(localBin)) {
     return localBin;
+  }
+  // Check common Linux/Docker install paths
+  const systemPaths = ["/bin/uvx", "/usr/local/bin/uvx", "/usr/bin/uvx"];
+  if (!isWindows) {
+    for (const p of systemPaths) {
+      if (fs.existsSync(p)) return p;
+    }
   }
   return "uvx";
 }
@@ -84,11 +94,14 @@ async function initMCP() {
     const uvxCmd = findUvxPath();
     console.log(`[MCP] Connecting to TradingView MCP server using: ${uvxCmd}...`);
 
+    const isWindows = process.platform === "win32";
+    const homeDir = process.env.USERPROFILE || process.env.HOME || "";
     const currentPath = process.env.PATH || "";
-    const localBinDir = path.join(process.env.USERPROFILE || "", ".local", "bin");
+    const localBinDir = path.join(homeDir, ".local", "bin");
+    const pathSep = isWindows ? ";" : ":";
     const envWithUv = {
       ...process.env,
-      PATH: `${localBinDir};${currentPath}`,
+      PATH: `${localBinDir}${pathSep}${currentPath}`,
     };
 
     const transport = new StdioClientTransport({
@@ -109,7 +122,13 @@ async function initMCP() {
       }
     );
 
-    await client.connect(transport);
+    // Add connection timeout for cloud environments (Render etc.)
+    const MCP_CONNECT_TIMEOUT = 15000; // 15 seconds max
+    const connectPromise = client.connect(transport);
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("MCP connection timed out after 15s")), MCP_CONNECT_TIMEOUT)
+    );
+    await Promise.race([connectPromise, timeoutPromise]);
     mcpClient = client;
 
     const result = await client.listTools();
@@ -119,6 +138,7 @@ async function initMCP() {
     return { client: mcpClient, tools: cachedTools };
   } catch (err) {
     console.warn("[MCP] Warning: Could not connect to TradingView MCP server process, using high-speed fallback APIs:", err.message);
+    mcpClient = null; // Explicitly null so fallback is always used
     cachedTools = DEFAULT_TOOLS;
     return { client: null, tools: cachedTools };
   }
@@ -363,7 +383,11 @@ async function fallbackMarketSnapshot() {
     const bRes = await fetch("https://api.binance.com/api/v3/ticker/24hr");
     const bData = await bRes.json();
     const bMap = {};
-    bData.forEach((t) => { bMap[t.symbol] = t; });
+    if (Array.isArray(bData)) {
+      bData.forEach((t) => { if (t && t.symbol) bMap[t.symbol] = t; });
+    } else {
+      console.warn("[Fallback] Binance snapshot returned non-array:", JSON.stringify(bData).slice(0, 200));
+    }
 
     ["BTCUSDT", "ETHUSDT", "SOLUSDT"].forEach((s) => {
       if (bMap[s]) {
@@ -423,10 +447,19 @@ async function fallbackMarketScanner(type, args = {}) {
 
   try {
     const res = await fetch("https://api.binance.com/api/v3/ticker/24hr");
+    if (!res.ok) {
+      throw new Error(`Binance API returned ${res.status}: ${res.statusText}`);
+    }
     const tickers = await res.json();
 
+    // CRITICAL FIX: Binance may return an error object instead of an array
+    if (!Array.isArray(tickers)) {
+      console.warn("[Fallback] Binance returned non-array response:", JSON.stringify(tickers).slice(0, 200));
+      throw new Error(tickers.msg || tickers.message || "Binance API did not return ticker array");
+    }
+
     const usdtPairs = tickers.filter(
-      (t) => t.symbol.endsWith("USDT") && Number(t.quoteVolume) > 3000000 && !t.symbol.includes("UP") && !t.symbol.includes("DOWN")
+      (t) => t && t.symbol && t.symbol.endsWith("USDT") && Number(t.quoteVolume) > 3000000 && !t.symbol.includes("UP") && !t.symbol.includes("DOWN")
     );
 
     let sorted = [];
@@ -465,10 +498,14 @@ async function callTool(name, args = {}) {
   if (mcpClient) {
     try {
       console.log(`[MCP] Calling tool: ${name} with args:`, JSON.stringify(args));
-      const response = await mcpClient.callTool({
-        name,
-        arguments: args,
-      });
+      
+      // Add per-call timeout to prevent hanging on cloud
+      const TOOL_TIMEOUT = 20000; // 20 seconds
+      const callPromise = mcpClient.callTool({ name, arguments: args });
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`Tool ${name} timed out after 20s`)), TOOL_TIMEOUT)
+      );
+      const response = await Promise.race([callPromise, timeoutPromise]);
 
       if (response && response.content && response.content.length > 0) {
         const textBlocks = response.content
@@ -482,9 +519,11 @@ async function callTool(name, args = {}) {
       }
 
       if (typeof result === "string" && (result.includes("transient TA error") || result.includes("JSONDecodeError") || result.includes("error") || result.includes("failed"))) {
+        console.warn(`[MCP] Tool ${name} returned error in text, falling back...`);
         hasError = true;
       }
       if (result && typeof result === "object" && result.error) {
+        console.warn(`[MCP] Tool ${name} returned error object, falling back...`);
         hasError = true;
       }
     } catch (err) {
