@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TRADEX PRO — Fatih'e Özel Akıllı Yatırım Terminali</title>
+  <meta name="description" content="TradingView ve Yapay Zeka ile güçlendirilmiş profesyonel borsa ve kripto analiz terminali.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="index.css">
+  <!-- TradingView Library -->
+  <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+</head>
+<body>
+  <div class="terminal-root">
+    
+    <!-- Top Nav -->
+    <header class="navbar">
+      <div class="nav-left">
+        <!-- Logo (Tıklanınca Ana Sayfaya / Canlı Terminale Döner) -->
+        <div class="brand" id="brandLogo" role="button" title="Ana Sayfaya Dön" style="cursor: pointer;">
+          <div class="brand-badge">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M3 3v18h18" stroke-linecap="round"/>
+              <path d="M19 9l-5 5-4-4-5 5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <div class="brand-names">
+            <span class="brand-title">TRADEX <span class="brand-glow">PRO</span></span>
+            <span class="brand-sub">Fatih'e Özel Yatırım Terminali</span>
+          </div>
+        </div>
+
+        <!-- Navigation View Switcher -->
+        <nav class="view-nav">
+          <button class="nav-item active" data-view="view-terminal">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+            Canlı Terminal & Asistan
+          </button>
+          <button class="nav-item" data-view="view-screener">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24M14.83 9.17l4.24-4.24M14.83 14.83l4.24 4.24M9.17 14.83l-4.24 4.24"/></svg>
+            Piyasa Tarayıcısı
+          </button>
+          <button class="nav-item" data-view="view-backtest">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+            Strateji & Geçmiş Testi
+          </button>
+          <button class="nav-item" data-view="view-news">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8M15 18h-5M10 6h8v4h-8z"/></svg>
+            Haberler & Piyasa Havası
+          </button>
+        </nav>
+      </div>
+
+      <div class="nav-right">
+        <!-- Symbol Fast Search -->
+        <div class="symbol-search">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input type="text" id="symbolSearchInput" placeholder="Sembol ara (BTC, NVDA, THYAO)..." autocomplete="off">
+        </div>
+
+        <!-- Fatih Welcome Pill -->
+        <div class="user-pill">
+          <span class="pulse-dot green"></span>
+          <span>Hoş geldin, <strong>Fatih</strong> 👋</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Real-time Live Ticker Tape -->
+    <div class="ticker-tape">
+      <div class="tape-track" id="tickerTape">
+        <div class="tape-item" onclick="setSymbol('BINANCE:BTCUSDT', 'BTCUSDT', 'BINANCE')"><span class="sym">BTC/USDT</span> <span class="val" id="t-btc">$85,512</span> <span class="chg up">+0.22%</span></div>
+        <div class="tape-item" onclick="setSymbol('BINANCE:ETHUSDT', 'ETHUSDT', 'BINANCE')"><span class="sym">ETH/USDT</span> <span class="val" id="t-eth">$2,733</span> <span class="chg down">-0.35%</span></div>
+        <div class="tape-item" onclick="setSymbol('BINANCE:SOLUSDT', 'SOLUSDT', 'BINANCE')"><span class="sym">SOL/USDT</span> <span class="val" id="t-sol">$174.5</span> <span class="chg up">+3.10%</span></div>
+        <div class="tape-item" onclick="setSymbol('NASDAQ:NVDA', 'NVDA', 'NASDAQ')"><span class="sym">NVDA</span> <span class="val" id="t-nvda">$138.4</span> <span class="chg down">-0.82%</span></div>
+        <div class="tape-item" onclick="setSymbol('BIST:THYAO', 'THYAO', 'BIST')"><span class="sym">THYAO</span> <span class="val" id="t-thyao">312.50 ₺</span> <span class="chg up">+2.12%</span></div>
+        <div class="tape-item" onclick="setSymbol('OANDA:XAUUSD', 'XAUUSD', 'OANDA')"><span class="sym">XAU/USD (Altın)</span> <span class="val" id="t-xau">$2,735</span> <span class="chg up">+0.45%</span></div>
+        <div class="tape-item" onclick="setSymbol('NASDAQ:TSLA', 'TSLA', 'NASDAQ')"><span class="sym">TSLA</span> <span class="val" id="t-tsla">$218.8</span> <span class="chg up">+1.85%</span></div>
+      </div>
+    </div>
+
+    <!-- MAIN VIEWS CONTAINER -->
+    <main class="viewport-area">
+      
+      <!-- VIEW 1: TERMINAL & AI -->
+      <section class="view-panel active" id="view-terminal">
+        <div class="terminal-grid" id="terminalGrid">
+          
+          <!-- Chart Column -->
+          <div class="chart-column">
+            <!-- Active Asset Header -->
+            <div class="asset-bar">
+              <div class="asset-info">
+                <div class="asset-titles">
+                  <h1 class="asset-name" id="displaySymbol">BINANCE:BTCUSDT</h1>
+                  <span class="asset-tag" id="displayExchange">BINANCE</span>
+                </div>
+                <div class="asset-price-box">
+                  <span class="live-price" id="currentPriceVal">---</span>
+                  <span class="live-chg up" id="priceChangeVal">---%</span>
+                </div>
+              </div>
+
+              <!-- En Çok Bakılan Varlıklar (Popüler Hızlı Çipler) -->
+              <div class="asset-chips">
+                <span class="chips-label">Popüler:</span>
+                <button class="chip active" data-sym="BINANCE:BTCUSDT" data-short="BTCUSDT" data-ex="BINANCE">BTC</button>
+                <button class="chip" data-sym="BINANCE:ETHUSDT" data-short="ETHUSDT" data-ex="BINANCE">ETH</button>
+                <button class="chip" data-sym="BINANCE:SOLUSDT" data-short="SOLUSDT" data-ex="BINANCE">SOL</button>
+                <button class="chip" data-sym="BIST:THYAO" data-short="THYAO" data-ex="BIST">THYAO</button>
+                <button class="chip" data-sym="BIST:ASELS" data-short="ASELS" data-ex="BIST">ASELS</button>
+                <button class="chip" data-sym="NASDAQ:NVDA" data-short="NVDA" data-ex="NASDAQ">NVDA</button>
+                <button class="chip" data-sym="NASDAQ:TSLA" data-short="TSLA" data-ex="NASDAQ">TSLA</button>
+                <button class="chip" data-sym="OANDA:XAUUSD" data-short="XAUUSD" data-ex="OANDA">ALTIN</button>
+              </div>
+
+              <!-- Grafik Kontrolleri (Çekmece & Temiz Ekran) -->
+              <div class="chart-actions">
+                <button id="toggleDrawerBtn" class="action-toggle-btn" title="Canlı Göstergeler Çekmecesini Aç/Kapat">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-5 5"/></svg>
+                  <span id="drawerBtnText">Teknik Göstergeler</span>
+                </button>
+                <button id="toggleCopilotBtn" class="action-toggle-btn" title="Asistan Panelini Gizle / Temiz Grafik Modu">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M15 3v18"/></svg>
+                  <span id="copilotBtnText">Asistanı Gizle</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- TradingView Chart -->
+            <div class="chart-embed" id="tradingview_chart_container"></div>
+
+            <!-- Açılır/Kapanır Canlı Teknik Göstergeler Çekmecesi -->
+            <div class="tech-drawer" id="techDrawer">
+              <div class="drawer-header">
+                <div class="drawer-title">
+                  <span class="drawer-badge">⚡ Canlı Göstergeler & Karar</span>
+                  <span id="drawerSymbolLabel" style="color: var(--text-dim); font-size: 11px; font-family: var(--font-mono);">BINANCE:BTCUSDT</span>
+                </div>
+                <button id="closeDrawerBtn" class="drawer-close-btn" title="Çekmeceyi Kapat">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                </button>
+              </div>
+              <div class="drawer-content">
+                <div class="drawer-pill highlight"><span class="lbl">Teknik Karar:</span> <strong class="val" id="ind-verdict">NÖTR</strong></div>
+                <div class="drawer-pill"><span class="lbl">RSI (14):</span> <strong class="val" id="ind-rsi">---</strong></div>
+                <div class="drawer-pill"><span class="lbl">MACD:</span> <strong class="val" id="ind-macd">---</strong></div>
+                <div class="drawer-pill"><span class="lbl">Bollinger:</span> <strong class="val" id="ind-bb">---</strong></div>
+                <div class="drawer-pill"><span class="lbl">EMA 20/50:</span> <strong class="val up" id="ind-ema">---</strong></div>
+                <div class="drawer-pill"><span class="lbl">Pivot:</span> <strong class="val" id="ind-pivot">---</strong></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Draggable Splitter / Resizer -->
+          <div class="terminal-resizer" id="terminalResizer" title="Sürükleyerek genişliği ayarlayın"></div>
+
+          <!-- AI Copilot Column -->
+          <aside class="copilot-column" id="copilotColumn">
+            <div class="copilot-header">
+              <div class="copilot-profile">
+                <div class="copilot-avatar">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                  </svg>
+                </div>
+                <div>
+                  <div class="copilot-name">Akıllı Finans Asistanı</div>
+                  <div class="copilot-status">🟢 Canlı Piyasa Analizi Aktif</div>
+                </div>
+              </div>
+              <button id="clearChatBtn" class="action-icon-btn" title="Sohbeti Temizle">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18m-2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              </button>
+            </div>
+
+            <!-- Chat Stream -->
+            <div class="copilot-stream" id="chatMessages">
+              <div class="msg ai-msg">
+                <div class="msg-avatar">YZ</div>
+                <div class="msg-content">
+                  <p>Selam <strong>Fatih</strong>! Ben senin kişisel borsa ve kripto analistinim. Canlı piyasa verilerini anlık okuyabilir, çoklu zaman diliminde teknik analiz çıkarabilir, hacim patlamalarını yakalayabilir ve strateji simülasyonları yapabilirim. Bugün neye bakıyoruz? Bol kazançlar dilerim! 🚀</p>
+                  <div class="prompt-chips">
+                    <button class="prompt-chip" data-q="Bu varlığın detaylı teknik analizini yap, RSI, MACD ve hareketli ortalamaları incele.">⚡ Canlı Teknik Analiz</button>
+                    <button class="prompt-chip" data-q="Bu varlığın pivot, en yakın destek ve direnç seviyelerini çıkar.">🎯 Destek & Direnç</button>
+                    <button class="prompt-chip" data-q="Binance borsasında son 24 saatte hacmi patlayan coinleri listele.">🚀 Hacim Patlamalarını Bul</button>
+                    <button class="prompt-chip" data-q="BTC için 1 saatlik grafikte RSI Pullback stratejisini backtest et.">🧪 Strateji Testi & Simülasyon</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Chat Form -->
+            <form class="copilot-input-box" id="chatForm">
+              <div class="input-wrapper">
+                <textarea id="chatInput" placeholder="Soru veya analiz isteği yazın (Enter ile gönder)..." rows="1"></textarea>
+                <button type="submit" id="sendBtn" class="send-action-btn" title="Gönder">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+                </button>
+              </div>
+            </form>
+          </aside>
+
+        </div>
+      </section>
+
+      <!-- VIEW 2: SCREENER (Piyasa Tarayıcısı) -->
+      <section class="view-panel" id="view-screener">
+        <div class="screener-view-wrapper">
+          <div class="view-header-bar">
+            <div>
+              <h2 class="view-title">Canlı Piyasa Tarayıcısı</h2>
+              <p class="view-desc">TradingView verileri ile anlık hacim kırılımları, en çok yükselen ve düşen varlıklar.</p>
+            </div>
+            <div class="screener-filter-bar">
+              <select id="screenerExchange">
+                <option value="BINANCE">Binance (Kripto)</option>
+                <option value="KUCOIN">KuCoin (Kripto)</option>
+                <option value="NASDAQ">NASDAQ (ABD Borsası)</option>
+                <option value="BIST">Borsa İstanbul (BIST)</option>
+              </select>
+              <select id="screenerType">
+                <option value="top_gainers">En Çok Yükselenler</option>
+                <option value="top_losers">En Çok Düşenler</option>
+                <option value="volume_breakout">Hacim Patlaması (Kırılım)</option>
+                <option value="bollinger_squeeze">Bollinger Bant Sıkışması</option>
+              </select>
+              <button id="runScreenerBtn" class="primary-btn">Taramayı Çalıştır</button>
+            </div>
+          </div>
+
+          <div class="screener-table-container">
+            <table class="pro-table">
+              <thead>
+                <tr>
+                  <th>Varlık</th>
+                  <th>Son Fiyat</th>
+                  <th>24s Değişim</th>
+                  <th>24s Hacim / Kırılım</th>
+                  <th>RSI / Teknik Durum</th>
+                  <th>Hızlı İşlem</th>
+                </tr>
+              </thead>
+              <tbody id="screenerTableBody">
+                <tr><td colspan="6" class="table-placeholder">Taramayı çalıştırmak için yukarıdaki "Taramayı Çalıştır" butonuna tıklayın.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW 3: BACKTEST LAB (Strateji Testi) -->
+      <section class="view-panel" id="view-backtest">
+        <div class="backtest-view-wrapper">
+          <div class="view-header-bar">
+            <div>
+              <h2 class="view-title">Algoritmik Strateji & Geçmiş Test Laboratuvarı</h2>
+              <p class="view-desc">9 profesyonel stratejiyi geçmiş piyasa verileri üzerinde simüle edin.</p>
+            </div>
+            <div class="backtest-params-bar">
+              <input type="text" id="btSymbol" value="BTCUSDT" placeholder="Sembol (BTCUSDT, NVDA)">
+              <select id="btStrategy">
+                <option value="rsi">RSI Aşırı Alım / Aşırı Satım (30/70)</option>
+                <option value="macd">MACD Sinyal Kesişimi</option>
+                <option value="bollinger">Bollinger Bantları Geri Dönüş</option>
+                <option value="ema_cross">EMA 9/21 Trend Kesişimi</option>
+                <option value="supertrend">Supertrend Trend Takipçisi</option>
+                <option value="donchian">Donchian Kanal Kırılımı</option>
+                <option value="keltner_breakout">Keltner Kanal Kırılımı</option>
+                <option value="triple_ema">Üçlü EMA Trend Kesişimi</option>
+                <option value="rsi_pullback">RSI Trend İçi Geri Çekilme (Pullback)</option>
+                <option value="compare_all">Tüm 9 Stratejiyi Karşılaştır (Liderlik Tablosu)</option>
+              </select>
+              <select id="btInterval">
+                <option value="1h">1 Saatlik (1s)</option>
+                <option value="1d" selected>1 Günlük (1g)</option>
+              </select>
+              <button id="runBacktestBtn" class="primary-btn">Simülasyonu Başlat</button>
+            </div>
+          </div>
+
+          <!-- Backtest Stat Cards -->
+          <div class="backtest-kpi-grid">
+            <div class="kpi-card">
+              <span class="kpi-label">Başarı Oranı (Kazanma Yüzdesi)</span>
+              <span class="kpi-value up" id="btWinRate">---</span>
+            </div>
+            <div class="kpi-card">
+              <span class="kpi-label">Toplam Net Getiri</span>
+              <span class="kpi-value up" id="btTotalReturn">---</span>
+            </div>
+            <div class="kpi-card">
+              <span class="kpi-label">Kâr Katsayısı (Kâr / Zarar)</span>
+              <span class="kpi-value" id="btProfitFactor">---</span>
+            </div>
+            <div class="kpi-card">
+              <span class="kpi-label">Sharpe Oranı (Risk/Getiri)</span>
+              <span class="kpi-value" id="btSharpe">---</span>
+            </div>
+            <div class="kpi-card">
+              <span class="kpi-label">Toplam İşlem Sayısı</span>
+              <span class="kpi-value" id="btTotalTrades">---</span>
+            </div>
+          </div>
+
+          <!-- Raw Results / Trade Log -->
+          <div class="backtest-log-card">
+            <div class="card-title">Detaylı Simülasyon Raporu</div>
+            <pre class="log-pre" id="btSummaryBox">Strateji testini başlattığınızda ayrıntılı metrikler, Sharpe oranı ve işlem dökümü burada görüntülenecektir.</pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW 4: NEWS & SENTIMENT -->
+      <section class="view-panel" id="view-news">
+        <div class="news-view-wrapper">
+          <div class="view-header-bar">
+            <div>
+              <h2 class="view-title">Piyasa Havası & Finans Haberleri</h2>
+              <p class="view-desc">Canlı duygu skoru, piyasa yönü ve finansal gelişmeler (Her 5 dakikada bir otomatik güncellenir).</p>
+            </div>
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <span style="font-size: 11.5px; color: var(--text-dim); font-family: var(--font-mono);" id="newsLastUpdated">Son Güncelleme: --:--</span>
+              <button id="refreshNewsBtn" class="primary-btn" style="display: flex; align-items: center; gap: 6px;">
+                <svg id="refreshNewsIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                Yenile
+              </button>
+            </div>
+          </div>
+
+          <!-- Hero 1-Paragraph Executive Summary for Fatih -->
+          <div class="fatih-summary-card">
+            <div class="summary-top-bar">
+              <span class="summary-badge">⚡ 30 Saniyede Piyasa — Fatih İçin Hızlı Özet</span>
+              <span class="summary-tag">Yapay Zeka Analizi</span>
+            </div>
+            <p class="summary-paragraph" id="fatihSummaryText">Piyasa özeti hazırlanıyor...</p>
+          </div>
+
+          <div class="news-grid">
+            <div class="sentiment-box">
+              <span class="sentiment-label">Piyasa Duygu & Risk İştahı Göstergesi</span>
+              <div class="sentiment-val-large" id="sentimentVal">74 / 100</div>
+              <div class="sentiment-badge bullish">Boğa Eğilimi / Pozitif Risk İştahı</div>
+              <p class="sentiment-note">Piyasa verileri, teknik indikatörler ve güvenilir finans haberleri taranarak hesaplanmaktadır.</p>
+            </div>
+            <div class="news-feed-box" id="newsFeed">
+              <div class="news-card">
+                <span class="news-tag">Canlı Akış</span>
+                <h3 class="news-head">Piyasa Haberleri Yükleniyor</h3>
+                <p class="news-summary">Yapay zeka asistanına "Piyasa haberlerini ve duygu analizini getir" diyerek veya 'Yenile' butonuna basarak anlık haber akışını çekebilirsiniz.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
