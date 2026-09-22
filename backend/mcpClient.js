@@ -670,15 +670,20 @@ async function fallbackKucoinScanner(type, limit = 20) {
     success: true,
     source: "KuCoin Live Scanner (Cloud Engine)",
     count: sorted.length,
-    items: sorted.map((t) => ({
-      symbol: t.symbol.replace("-", ""),
-      price: Number(t.last),
-      change_24h_percent: Number((Number(t.changeRate) * 100).toFixed(2)),
-      volume_24h: Math.round(Number(t.volValue)),
-      volume: Math.round(Number(t.volValue)),
-      high_24h: Number(t.high),
-      low_24h: Number(t.low),
-    })),
+    items: sorted.map((t) => {
+      const chg = Number((Number(t.changeRate) * 100).toFixed(2));
+      return {
+        symbol: t.symbol.replace("-", ""),
+        price: Number(t.last),
+        change_24h_percent: chg,
+        changePercent: chg,
+        change_percent: chg,
+        volume_24h: Math.round(Number(t.volValue)),
+        volume: Math.round(Number(t.volValue)),
+        high_24h: Number(t.high),
+        low_24h: Number(t.low),
+      };
+    }),
   };
 }
 
@@ -702,6 +707,8 @@ async function fallbackStockScanner(exchange = "NASDAQ", type = "top_gainers", l
         symbol: isBist ? sym.replace(".IS", "") : sym,
         price,
         change_24h_percent: chg,
+        changePercent: chg,
+        change_percent: chg,
         volume_24h: Number(meta.regularMarketVolume || 0),
         volume: Number(meta.regularMarketVolume || 0),
       };
@@ -778,15 +785,20 @@ async function fallbackMarketScanner(type, args = {}) {
       success: true,
       source: "Binance Live Scanner (Instant Cloud Engine)",
       count: sorted.length,
-      items: sorted.map((t) => ({
-        symbol: t.symbol,
-        price: Number(t.lastPrice),
-        change_24h_percent: Number(t.priceChangePercent),
-        volume_24h: Math.round(Number(t.quoteVolume)),
-        volume: Math.round(Number(t.quoteVolume)),
-        high_24h: Number(t.highPrice),
-        low_24h: Number(t.lowPrice),
-      })),
+      items: sorted.map((t) => {
+        const chg = Number(t.priceChangePercent);
+        return {
+          symbol: t.symbol,
+          price: Number(t.lastPrice),
+          change_24h_percent: chg,
+          changePercent: chg,
+          change_percent: chg,
+          volume_24h: Math.round(Number(t.quoteVolume)),
+          volume: Math.round(Number(t.quoteVolume)),
+          high_24h: Number(t.highPrice),
+          low_24h: Number(t.lowPrice),
+        };
+      }),
     };
   } catch (err) {
     console.warn(`[Fallback] Binance scanner failed (${err.message}), seamlessly switching to KuCoin cloud scanner...`);

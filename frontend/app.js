@@ -538,11 +538,11 @@ function renderScreenerResults(result) {
   if (Array.isArray(result)) {
     items = result;
   } else if (typeof result === "object" && result !== null) {
-    items = result.gainers || result.losers || result.breakouts || result.items || [];
+    items = result.gainers || result.losers || result.breakouts || result.items || result.market_overview || [];
   } else if (typeof result === "string") {
     try {
       const parsed = JSON.parse(result);
-      items = Array.isArray(parsed) ? parsed : [parsed];
+      items = Array.isArray(parsed) ? parsed : (parsed.items || parsed.gainers || parsed.losers || [parsed]);
     } catch (e) {}
   }
 
@@ -558,28 +558,73 @@ function renderScreenerResults(result) {
     
     // Price
     const ind = item.indicators || {};
-    const price = ind.close || item.price || item.current_price || ind.open || "---";
-    
-    // Change
-    const chg = item.changePercent !== undefined ? item.changePercent : (item.change !== undefined ? item.change : (item.change_percent || item.gain_percent || 0));
-    const isUp = Number(chg) >= 0;
-    
-    // Volume
-    const vol = ind.volume || item.volume || item.volume_24h || "---";
-    
-    // RSI
-    const rsiVal = ind.RSI || item.rsi || item.rsi_14 || "---";
+    const rawPrice = ind.close !== undefined ? ind.close : (item.price !== undefined ? item.price : (item.current_price !== undefined ? item.current_price : ind.open));
+    let formattedPrice = "---";
+    if (rawPrice !== undefined && rawPrice !== null && !isNaN(Number(rawPrice))) {
+      const numP = Number(rawPrice);
+      formattedPrice = numP < 1 ? `$${numP.toFixed(4)}` : `$${numP.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+
+    // Comprehensive Change parsing (Never 0 unless literally 0%)
+    let rawChg = null;
+    if (item.change_24h_percent !== undefined && item.change_24h_percent !== null) {
+      rawChg = item.change_24h_percent;
+    } else if (item.changePercent !== undefined && item.changePercent !== null) {
+      rawChg = item.changePercent;
+    } else if (item.change_percent !== undefined && item.change_percent !== null) {
+      rawChg = item.change_percent;
+    } else if (item.priceChangePercent !== undefined && item.priceChangePercent !== null) {
+      rawChg = item.priceChangePercent;
+    } else if (item.changeRate !== undefined && item.changeRate !== null) {
+      rawChg = Number(item.changeRate) * 100;
+    } else if (item.change !== undefined && item.change !== null) {
+      rawChg = item.change;
+    } else if (item.gain_percent !== undefined && item.gain_percent !== null) {
+      rawChg = item.gain_percent;
+    } else if (ind.changePercent !== undefined && ind.changePercent !== null) {
+      rawChg = ind.changePercent;
+    } else if (ind.change !== undefined && ind.change !== null) {
+      rawChg = ind.change;
+    }
+    const chg = rawChg !== null ? Number(rawChg) : 0;
+    const isUp = chg >= 0;
+
+    // Volume formatting ($M / $K / $B)
+    const rawVol = ind.volume || item.volume || item.volume_24h || item.volume_24h_usdt || item.quote_volume_24h;
+    let formattedVol = "---";
+    if (rawVol !== undefined && rawVol !== null && !isNaN(Number(rawVol)) && Number(rawVol) > 0) {
+      const numV = Number(rawVol);
+      if (numV >= 1e9) formattedVol = `$${(numV / 1e9).toFixed(2)}B`;
+      else if (numV >= 1e6) formattedVol = `$${(numV / 1e6).toFixed(2)}M`;
+      else if (numV >= 1e3) formattedVol = `$${(numV / 1e3).toFixed(1)}K`;
+      else formattedVol = `$${numV.toLocaleString()}`;
+    }
+
+    // Technical / RSI status
+    let techStatus = "---";
+    const rawRsi = ind.RSI || item.rsi || item.rsi_14;
+    if (rawRsi !== undefined && !isNaN(Number(rawRsi))) {
+      const numRsi = Number(rawRsi);
+      techStatus = `<span style="font-family: var(--font-mono); font-weight: 600;">RSI: ${numRsi.toFixed(1)}</span> <span style="font-size: 11px; color: var(--text-dim);">(${numRsi > 70 ? 'Aşırı Alım' : (numRsi < 30 ? 'Aşırı Satım' : 'Dengeli')})</span>`;
+    } else {
+      if (chg >= 10) techStatus = `<span style="color: var(--bullish); font-weight: 600;">🚀 Hacim Patlaması</span>`;
+      else if (chg >= 3) techStatus = `<span style="color: var(--bullish); font-weight: 600;">🟢 Yükseliş Trendi</span>`;
+      else if (chg > 0) techStatus = `<span style="color: #60a5fa;">📈 Pozitif Seyir</span>`;
+      else if (chg <= -10) techStatus = `<span style="color: var(--bearish); font-weight: 600;">⚠️ Sert Düşüş</span>`;
+      else if (chg <= -3) techStatus = `<span style="color: var(--bearish); font-weight: 600;">🔴 Satış Baskısı</span>`;
+      else techStatus = `<span style="color: var(--text-dim);">⚪ Yatay / Dengeli</span>`;
+    }
 
     tr.innerHTML = `
       <td><strong>${rawSym}</strong></td>
-      <td>$${typeof price === "number" ? price.toLocaleString() : price}</td>
-      <td style="color: ${isUp ? 'var(--bullish)' : 'var(--bearish)'}; font-weight: 600;">
-        ${isUp ? '+' : ''}${Number(chg).toFixed(2)}%
+      <td style="font-family: var(--font-mono);">${formattedPrice}</td>
+      <td style="color: ${isUp ? 'var(--bullish)' : 'var(--bearish)'}; font-weight: 700; font-family: var(--font-mono);">
+        ${isUp ? '+' : ''}${chg.toFixed(2)}%
       </td>
-      <td>${typeof vol === "number" ? vol.toLocaleString() : vol}</td>
-      <td>${typeof rsiVal === "number" ? rsiVal.toFixed(1) : rsiVal}</td>
+      <td style="font-family: var(--font-mono);">${formattedVol}</td>
+      <td>${techStatus}</td>
       <td>
-        <button class="primary-btn" style="padding: 3px 10px; font-size: 11px;" onclick="selectAndSwitchToChart('${rawSym}')">Grafik</button>
+        <button class="primary-btn" style="padding: 4px 12px; font-size: 11px;" onclick="selectAndSwitchToChart('${rawSym}')">Grafik</button>
       </td>
     `;
     tbody.appendChild(tr);
