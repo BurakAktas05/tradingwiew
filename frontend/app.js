@@ -278,6 +278,10 @@ function setSymbol(fullSymbol, shortSymbol, exchange) {
   const drawerSym = document.getElementById("drawerSymbolLabel");
   if (drawerSym) drawerSym.textContent = fullSymbol;
 
+  const copilotStatus = document.querySelector(".copilot-status");
+  if (copilotStatus) copilotStatus.textContent = `🟢 Aktif Grafik: ${fullSymbol}`;
+  if (chatInput) chatInput.placeholder = `${shortSymbol} (${exchange}) veya herhangi bir soru sorun...`;
+
   document.querySelectorAll(".asset-chips .chip").forEach((chip) => {
     chip.classList.toggle("active", chip.dataset.sym === fullSymbol);
   });
@@ -309,6 +313,9 @@ async function sendMessage(text) {
         message: userQuery,
         history: chatHistory,
         apiKey: storedApiKey || null,
+        activeSymbol: currentSymbol,
+        activeExchange: currentExchange,
+        activeShortSymbol: currentShortSymbol,
       }),
     });
 
@@ -1076,7 +1083,10 @@ clearChatBtn.addEventListener("click", () => {
 
 document.addEventListener("click", (e) => {
   if (e.target.classList.contains("prompt-chip")) {
-    const q = e.target.dataset.q;
+    let q = e.target.dataset.q;
+    if (q && q.includes("Bu varlığın")) {
+      q = q.replace("Bu varlığın", `${currentShortSymbol} (${currentExchange}) varlığının`);
+    }
     sendMessage(q);
   }
 });
@@ -1101,6 +1111,10 @@ document.querySelectorAll(".asset-chips .chip").forEach((chip) => {
 
 // Initialize on Load
 window.addEventListener("DOMContentLoaded", () => {
+  const copilotStatus = document.querySelector(".copilot-status");
+  if (copilotStatus) copilotStatus.textContent = `🟢 Aktif Grafik: ${currentSymbol}`;
+  if (chatInput) chatInput.placeholder = `${currentShortSymbol} (${currentExchange}) veya herhangi bir soru sorun...`;
+
   loadTradingViewChart(currentSymbol);
   loadTechnicalData(currentSymbol, currentExchange);
   loadNews(false); // Background initial load for news & sentiment

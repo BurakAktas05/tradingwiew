@@ -78,14 +78,19 @@ app.get("/api/news", async (req, res) => {
 
 // 5. OpenAI Chat with TradingView MCP Function Calling
 app.post("/api/chat", async (req, res) => {
-  const { message, history, apiKey } = req.body;
+  const { message, history, apiKey, activeSymbol, activeExchange, activeShortSymbol } = req.body;
 
   if (!message || typeof message !== "string") {
     return res.status(400).json({ error: "Message is required." });
   }
 
   try {
-    const response = await chatWithOpenAI(message, history || [], apiKey);
+    const context = {
+      activeSymbol: activeSymbol || "BINANCE:BTCUSDT",
+      activeExchange: activeExchange || "BINANCE",
+      activeShortSymbol: activeShortSymbol || (activeSymbol ? activeSymbol.replace(/.*:/, "").replace(".IS", "") : "BTCUSDT"),
+    };
+    const response = await chatWithOpenAI(message, history || [], apiKey, context);
     res.json({
       success: true,
       reply: response.reply,
