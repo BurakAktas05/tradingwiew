@@ -1238,6 +1238,160 @@ select:focus, input[type="text"]:focus {
   overflow-y: auto;
 }
 
+/* Rich Backtest Dashboard Styles */
+.bt-report-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+}
+
+.bt-hero-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.14), rgba(16, 185, 129, 0.08));
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: var(--radius-sm);
+  padding: 16px 20px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.bt-hero-banner.loss {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.12), rgba(185, 28, 28, 0.06));
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.bt-hero-title {
+  font-family: var(--font-head);
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bt-hero-desc {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+
+.bt-hero-badge {
+  font-family: var(--font-head);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.2);
+  color: var(--bullish);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.bt-hero-badge.down {
+  background: rgba(239, 68, 68, 0.2);
+  color: var(--bearish);
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.bt-details-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.bt-detail-item {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+}
+
+.bt-detail-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.bt-detail-val {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  margin-top: 4px;
+}
+
+.bt-table-wrapper {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.bt-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  text-align: left;
+}
+
+.bt-table th {
+  background: rgba(255, 255, 255, 0.04);
+  padding: 10px 14px;
+  font-family: var(--font-head);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+}
+
+.bt-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  font-family: var(--font-mono);
+  color: var(--text-main);
+}
+
+.bt-table tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.bt-pill {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.bt-pill.profit {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--bullish);
+}
+
+.bt-pill.loss {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--bearish);
+}
+
+.bt-rank-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font-family: var(--font-head);
+  font-weight: 700;
+  font-size: 12px;
+}
+.bt-rank-badge.rank-1 { background: rgba(234, 179, 8, 0.25); color: #facc15; border: 1px solid #facc15; }
+.bt-rank-badge.rank-2 { background: rgba(148, 163, 184, 0.25); color: #cbd5e1; border: 1px solid #94a3b8; }
+.bt-rank-badge.rank-3 { background: rgba(180, 83, 9, 0.25); color: #fb923c; border: 1px solid #b45309; }
+
 /* Fatih Executive Summary Card */
 .fatih-summary-card {
   background: linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(6, 182, 212, 0.08));

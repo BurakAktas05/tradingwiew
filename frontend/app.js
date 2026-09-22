@@ -619,6 +619,272 @@ function toYahooSymbol(sym) {
   return s;
 }
 
+const STRATEGY_TR_MAP = {
+  rsi: "RSI Aşırı Alım / Satım (30/70)",
+  macd: "MACD Sinyal Kesişimi",
+  bollinger: "Bollinger Bant Geri Dönüşü",
+  ema_cross: "EMA 9/21 Trend Kesişimi",
+  supertrend: "Supertrend Trend Takipçisi",
+  donchian: "Donchian Kanal Kırılımı",
+  keltner_breakout: "Keltner Kanal Kırılımı",
+  triple_ema: "Üçlü EMA Trend Kesişimi",
+  rsi_pullback: "RSI Trend İçi Geri Çekilme",
+};
+
+function normalizeBacktestData(raw) {
+  if (!raw) return null;
+  let r = raw;
+
+  // Handle stringified JSON
+  if (typeof r === "string") {
+    try {
+      r = JSON.parse(r);
+    } catch (e) {
+      const match = r.match(/\{[\s\S]*\}/);
+      if (match) {
+        try { r = JSON.parse(match[0]); } catch (e2) {}
+      }
+    }
+  }
+
+  // Handle array wrapper
+  if (Array.isArray(r)) {
+    if (r.length === 1 && typeof r[0] === "object") {
+      r = r[0];
+    } else if (r.length > 1 && r[0].strategy && r[0].total_return_pct !== undefined) {
+      r = { ranking: r };
+    } else if (r.length > 0 && r[0].ranking) {
+      r = r[0];
+    }
+  }
+
+  // Handle MCP content wrapper { content: [{ type: "text", text: "..." }] }
+  if (r && Array.isArray(r.content) && r.content[0] && r.content[0].text) {
+    try {
+      r = JSON.parse(r.content[0].text);
+    } catch (e) {
+      r = r.content[0].text;
+    }
+  }
+
+  return (typeof r === "object" && r !== null) ? r : null;
+}
+
+function renderBacktestDashboard(r, defaultSymbol) {
+  const container = document.getElementById("btSummaryBox");
+  if (!container || !r) return;
+
+  // 1. Leaderboard Mode (compare_all)
+  if (r.ranking && Array.isArray(r.ranking) && r.ranking.length > 0) {
+    const winner = r.ranking[0];
+    const winRate = Number(winner.win_rate_pct !== undefined ? winner.win_rate_pct : (winner.win_rate ? winner.win_rate * 100 : 0)).toFixed(1);
+    const totalReturn = Number(winner.total_return_pct !== undefined ? winner.total_return_pct : (winner.total_return || 0)).toFixed(2);
+    const isWinnerProfit = Number(totalReturn) >= 0;
+
+    // Update KPI cards with winner
+    document.getElementById("btWinRate").textContent = `%${winRate}`;
+    const retEl = document.getElementById("btTotalReturn");
+    retEl.textContent = `${isWinnerProfit ? '+' : ''}${totalReturn}%`;
+    retEl.className = isWinnerProfit ? "kpi-value up" : "kpi-value down";
+    document.getElementById("btProfitFactor").textContent = Number(winner.profit_factor || 1).toFixed(2);
+    document.getElementById("btSharpe").textContent = Number(winner.sharpe_ratio || 0).toFixed(2);
+    document.getElementById("btTotalTrades").textContent = winner.total_trades || "---";
+
+    const winnerName = STRATEGY_TR_MAP[winner.strategy] || winner.strategy_label || winner.strategy;
+
+    let html = `
+      <div class="bt-hero-banner ${isWinnerProfit ? '' : 'loss'}">
+        <div>
+          <div class="bt-hero-title">
+            🏆 En Başarılı Strateji: <span>${winnerName}</span>
+          </div>
+          <div class="bt-hero-desc">
+            ${r.symbol || defaultSymbol} üzerinde geçmiş 1 yıllık simülasyonda en yüksek net getiriyi sağladı.
+          </div>
+        </div>
+        <div class="bt-hero-badge ${isWinnerProfit ? '' : 'down'}">
+          ${isWinnerProfit ? '+' : ''}${totalReturn}% Net Getiri
+        </div>
+      </div>
+
+      <div class="bt-table-wrapper">
+        <table class="bt-table">
+          <thead>
+            <tr>
+              <th style="width: 50px;">Sıra</th>
+              <th>Strateji Adı</th>
+              <th>Net Getiri</th>
+              <th>Başarı (Kazanma)</th>
+              <th>Kâr Katsayısı</th>
+              <th>Sharpe</th>
+              <th>İşlem Adedi</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
+
+    r.ranking.forEach((s) => {
+      const sRet = Number(s.total_return_pct !== undefined ? s.total_return_pct : (s.total_return || 0)).toFixed(2);
+      const isUp = Number(sRet) >= 0;
+      const sWin = Number(s.win_rate_pct !== undefined ? s.win_rate_pct : (s.win_rate ? s.win_rate * 100 : 0)).toFixed(1);
+      const sName = STRATEGY_TR_MAP[s.strategy] || s.strategy_label || s.strategy;
+      const rankBadgeClass = s.rank === 1 ? "rank-1" : (s.rank === 2 ? "rank-2" : (s.rank === 3 ? "rank-3" : ""));
+
+      html += `
+        <tr>
+          <td><span class="bt-rank-badge ${rankBadgeClass}">#${s.rank}</span></td>
+          <td style="font-family: var(--font-head); font-weight: 600; color: #fff;">${sName}</td>
+          <td><span class="bt-pill ${isUp ? 'profit' : 'loss'}">${isUp ? '+' : ''}${sRet}%</span></td>
+          <td>%${sWin}</td>
+          <td>${Number(s.profit_factor || 1).toFixed(2)}</td>
+          <td>${Number(s.sharpe_ratio || 0).toFixed(2)}</td>
+          <td>${s.total_trades || 0} işlem</td>
+        </tr>
+      `;
+    });
+
+    html += `
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    container.innerHTML = html;
+    return;
+  }
+
+  // 2. Single Strategy Mode
+  const rawWinRate = r.win_rate_pct !== undefined ? r.win_rate_pct : (r.win_rate !== undefined ? r.win_rate * 100 : 0);
+  const winRate = Number(rawWinRate || 0).toFixed(1);
+
+  const rawReturn = r.total_return_pct !== undefined ? r.total_return_pct : (r.total_return !== undefined ? r.total_return : 0);
+  const totalReturn = Number(rawReturn || 0).toFixed(2);
+  const isProfit = Number(totalReturn) >= 0;
+
+  const initialCap = Number(r.initial_capital || 10000);
+  const finalCap = Number(r.final_capital || Math.round(initialCap * (1 + Number(totalReturn) / 100)));
+  const netProfitUsd = finalCap - initialCap;
+
+  const profitFactor = Number(r.profit_factor !== undefined ? r.profit_factor : 1).toFixed(2);
+  const sharpe = Number(r.sharpe_ratio !== undefined ? r.sharpe_ratio : 0).toFixed(2);
+  const totalTrades = Number(r.total_trades || (r.recent_trades ? r.recent_trades.length : 0));
+  const winTrades = Number(r.winning_trades !== undefined ? r.winning_trades : Math.round((Number(winRate) / 100) * totalTrades));
+  const loseTrades = Number(r.losing_trades !== undefined ? r.losing_trades : Math.max(0, totalTrades - winTrades));
+  const maxDD = Math.abs(Number(r.max_drawdown_pct || 0)).toFixed(2);
+
+  // Update top KPI cards
+  document.getElementById("btWinRate").textContent = `%${winRate}`;
+  const retEl = document.getElementById("btTotalReturn");
+  retEl.textContent = `${isProfit ? '+' : ''}${totalReturn}%`;
+  retEl.className = isProfit ? "kpi-value up" : "kpi-value down";
+  document.getElementById("btProfitFactor").textContent = profitFactor;
+  document.getElementById("btSharpe").textContent = sharpe;
+  document.getElementById("btTotalTrades").textContent = totalTrades;
+
+  const stratName = STRATEGY_TR_MAP[r.strategy] || r.strategy_label || r.strategy || "Teknik Strateji";
+  const intervalName = r.timeframe === "1h" || r.interval === "1h" ? "1 Saatlik (1s)" : "1 Günlük (1g)";
+
+  let html = `
+    <div class="bt-hero-banner ${isProfit ? '' : 'loss'}">
+      <div>
+        <div class="bt-hero-title">
+          📊 ${stratName}
+        </div>
+        <div class="bt-hero-desc">
+          Varlık: <strong style="color: #fff;">${r.symbol || defaultSymbol}</strong> | Zaman Dilimi: <strong>${intervalName}</strong> | Test Süresi: <strong>1 Yıl</strong>
+        </div>
+      </div>
+      <div class="bt-hero-badge ${isProfit ? '' : 'down'}">
+        ${isProfit ? '+' : ''}${totalReturn}% Net Getiri
+      </div>
+    </div>
+
+    <div class="bt-details-grid">
+      <div class="bt-detail-item">
+        <div class="bt-detail-label">Başlangıç Sermayesi</div>
+        <div class="bt-detail-val">$${initialCap.toLocaleString()}</div>
+      </div>
+      <div class="bt-detail-item">
+        <div class="bt-detail-label">Bitiş Sermayesi</div>
+        <div class="bt-detail-val" style="color: ${isProfit ? 'var(--bullish)' : 'var(--bearish)'}">
+          $${finalCap.toLocaleString()} (${isProfit ? '+' : ''}$${netProfitUsd.toLocaleString()})
+        </div>
+      </div>
+      <div class="bt-detail-item">
+        <div class="bt-detail-label">İşlem Dağılımı</div>
+        <div class="bt-detail-val">
+          <span style="color: var(--bullish);">${winTrades} Kâr</span> / <span style="color: var(--bearish);">${loseTrades} Zarar</span>
+        </div>
+      </div>
+      <div class="bt-detail-item">
+        <div class="bt-detail-label">Maksimum Düşüş (DD)</div>
+        <div class="bt-detail-val" style="color: var(--bearish);">%${maxDD}</div>
+      </div>
+      <div class="bt-detail-item">
+        <div class="bt-detail-label">Kâr Katsayısı (PF)</div>
+        <div class="bt-detail-val">${profitFactor}</div>
+      </div>
+      <div class="bt-detail-item">
+        <div class="bt-detail-label">Sharpe Oranı</div>
+        <div class="bt-detail-val">${sharpe}</div>
+      </div>
+    </div>
+  `;
+
+  if (r.recent_trades && Array.isArray(r.recent_trades) && r.recent_trades.length > 0) {
+    html += `
+      <div style="margin-top: 6px;">
+        <div style="font-family: var(--font-head); font-size: 13px; font-weight: 700; color: #fff; margin-bottom: 8px;">
+          ⏱️ Gerçekleşen Son İşlemler
+        </div>
+        <div class="bt-table-wrapper">
+          <table class="bt-table">
+            <thead>
+              <tr>
+                <th>Giriş Tarihi</th>
+                <th>Giriş Fiyatı</th>
+                <th>Çıkış Tarihi</th>
+                <th>Çıkış Fiyatı</th>
+                <th>Net Getiri</th>
+                <th>Sonuç</th>
+              </tr>
+            </thead>
+            <tbody>
+    `;
+
+    r.recent_trades.forEach((t) => {
+      const tRet = Number(t.return_pct || 0).toFixed(2);
+      const isTradeProfit = Number(tRet) >= 0;
+      const enPrice = t.entry_price ? `$${Number(t.entry_price).toLocaleString()}` : "---";
+      const exPrice = t.exit_price ? `$${Number(t.exit_price).toLocaleString()}` : "---";
+
+      html += `
+        <tr>
+          <td>${t.entry_date || "---"}</td>
+          <td>${enPrice}</td>
+          <td>${t.exit_date || "---"}</td>
+          <td>${exPrice}</td>
+          <td><span class="bt-pill ${isTradeProfit ? 'profit' : 'loss'}">${isTradeProfit ? '+' : ''}${tRet}%</span></td>
+          <td>
+            <span style="font-size: 11px; font-weight: 600; color: ${isTradeProfit ? 'var(--bullish)' : 'var(--bearish)'}">
+              ${isTradeProfit ? '✔ KÂR' : '✖ ZARAR'}
+            </span>
+          </td>
+        </tr>
+      `;
+    });
+
+    html += `
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  container.innerHTML = html;
+}
+
 document.getElementById("runBacktestBtn").addEventListener("click", async () => {
   const rawInput = document.getElementById("btSymbol").value.trim() || "BTC";
   const symbol = toYahooSymbol(rawInput);
@@ -647,90 +913,33 @@ document.getElementById("runBacktestBtn").addEventListener("click", async () => 
     btn.textContent = "Simülasyonu Başlat";
 
     if (data.success && data.result) {
-      const r = data.result;
-
-      if (r.ranking && Array.isArray(r.ranking)) {
-        // Multi-strategy compare leaderboard
-        const winner = r.ranking[0];
-        document.getElementById("btWinRate").textContent = `${winner.win_rate_pct}%`;
-        
-        const totalReturn = `${winner.total_return_pct}%`;
-        const retEl = document.getElementById("btTotalReturn");
-        retEl.textContent = totalReturn;
-        retEl.className = totalReturn.startsWith("-") ? "kpi-value down" : "kpi-value up";
-
-        document.getElementById("btProfitFactor").textContent = winner.profit_factor;
-        document.getElementById("btSharpe").textContent = winner.sharpe_ratio;
-        document.getElementById("btTotalTrades").textContent = winner.total_trades;
-
-        const STRATEGY_TR_MAP = {
-          "rsi": "RSI Aşırı Alım / Satım",
-          "macd": "MACD Sinyal Kesişimi",
-          "bollinger": "Bollinger Bant Geri Dönüşü",
-          "ema_cross": "EMA 9/21 Trend Kesişimi",
-          "supertrend": "Supertrend Takipçisi",
-          "donchian": "Donchian Kanal Kırılımı",
-          "keltner_breakout": "Keltner Kanal Kırılımı",
-          "triple_ema": "Üçlü EMA Trend Kesişimi",
-          "rsi_pullback": "RSI Trend İçi Geri Çekilme"
-        };
-
-        let summaryText = `🏆 EN İYİ PERFORMANS GÖSTEREN STRATEJİ: ${(STRATEGY_TR_MAP[winner.strategy] || winner.strategy_label).toUpperCase()} (Net Getiri: %${winner.total_return_pct})\n\n`;
-        summaryText += `Sıra | Strateji Adı                          | Getiri (%) | Başarı (%) | Sharpe | İşlem\n`;
-        summaryText += `------------------------------------------------------------------------------------\n`;
-        r.ranking.forEach((s) => {
-          const stratName = STRATEGY_TR_MAP[s.strategy] || s.strategy_label;
-          summaryText += `#${s.rank}   | ${stratName.padEnd(38)} | %${String(s.total_return_pct).padEnd(8)} | %${String(s.win_rate_pct).padEnd(6)} | ${String(s.sharpe_ratio).padEnd(6)} | ${s.total_trades}\n`;
-        });
-        document.getElementById("btSummaryBox").textContent = summaryText;
+      const normalized = normalizeBacktestData(data.result);
+      if (normalized) {
+        renderBacktestDashboard(normalized, rawInput);
       } else {
-        // Single strategy
-        const winRate = r.win_rate_pct !== undefined ? `${r.win_rate_pct}%` : (r.win_rate !== undefined ? `${(r.win_rate * 100).toFixed(1)}%` : "---");
-        document.getElementById("btWinRate").textContent = winRate;
-
-        const totalReturn = r.total_return_pct !== undefined ? `${r.total_return_pct.toFixed(2)}%` : (r.total_return !== undefined ? `${r.total_return.toFixed(2)}%` : "---");
-        const retEl = document.getElementById("btTotalReturn");
-        retEl.textContent = totalReturn;
-        retEl.className = totalReturn.startsWith("-") ? "kpi-value down" : "kpi-value up";
-
-        document.getElementById("btProfitFactor").textContent = r.profit_factor !== undefined ? Number(r.profit_factor).toFixed(2) : "---";
-        document.getElementById("btSharpe").textContent = r.sharpe_ratio !== undefined ? Number(r.sharpe_ratio).toFixed(2) : "---";
-        document.getElementById("btTotalTrades").textContent = r.total_trades || r.trades_count || "---";
-
-        const STRATEGY_TR_MAP = {
-          "rsi": "RSI Aşırı Alım / Satım",
-          "macd": "MACD Sinyal Kesişimi",
-          "bollinger": "Bollinger Bant Geri Dönüşü",
-          "ema_cross": "EMA 9/21 Trend Kesişimi",
-          "supertrend": "Supertrend Takipçisi",
-          "donchian": "Donchian Kanal Kırılımı",
-          "keltner_breakout": "Keltner Kanal Kırılımı",
-          "triple_ema": "Üçlü EMA Trend Kesişimi",
-          "rsi_pullback": "RSI Trend İçi Geri Çekilme"
-        };
-        const stratName = STRATEGY_TR_MAP[r.strategy] || r.strategy_label || r.strategy;
-        const intervalName = r.timeframe === "1h" || r.interval === "1h" ? "1 Saatlik (1s)" : "1 Günlük (1g)";
-
-        let summaryText = `Strateji: ${stratName}\n`;
-        summaryText += `Varlık: ${r.symbol} | Veri Dönemi: 1 Yıllık Geçmiş | Zaman Dilimi: ${intervalName}\n`;
-        summaryText += `Başlangıç Sermayesi: $${r.initial_capital} -> Bitiş Sermayesi: $${r.final_capital}\n`;
-        summaryText += `Başarı Oranı: ${winRate} | Toplam İşlem: ${r.total_trades} (Kazanan: ${r.winning_trades}, Kaybeden: ${r.losing_trades})\n`;
-        summaryText += `Maksimum Değer Kaybı (Drawdown): %${r.max_drawdown_pct} | Kâr Katsayısı: ${r.profit_factor}\n`;
-        if (r.recent_trades && r.recent_trades.length > 0) {
-          summaryText += `\nSon Gerçekleşen İşlemler:\n`;
-          r.recent_trades.forEach((t) => {
-            summaryText += `  • Giriş: ${t.entry_date} ($${t.entry_price}) -> Çıkış: ${t.exit_date} ($${t.exit_price}) | Net Getiri: %${t.return_pct}\n`;
-          });
-        }
-        document.getElementById("btSummaryBox").textContent = summaryText;
+        document.getElementById("btSummaryBox").innerHTML = `
+          <div class="table-placeholder" style="padding: 24px; color: #f59e0b;">
+            ⚠️ Simülasyon sonucu okunamadı. Lütfen sembolü kontrol edip tekrar deneyin.
+          </div>
+        `;
       }
     } else {
-      alert("😅 Fatih abi simülasyonu çalıştırırken bir pürüz çıktı: " + (data.error || "Bilinmeyen hata") + "\n\nBir daha dene, yine olmazsa Burak'a söyle baksın!");
+      document.getElementById("btSummaryBox").innerHTML = `
+        <div class="table-placeholder" style="padding: 24px; color: #f59e0b;">
+          ⚠️ Simülasyon çalıştırılırken veri alınamadı: ${data.error || "Sonuç bulunamadı"}<br>
+          Lütfen sembolü kontrol edip tekrar deneyin.
+        </div>
+      `;
     }
   } catch (err) {
     btn.disabled = false;
     btn.textContent = "Simülasyonu Başlat";
-    alert("😅 Fatih abi simülasyon tarafında ufak bir aksilik oldu: " + err.message + "\n\nBir daha dene, çözülmezse Burak'a söyle bi el atsın!");
+    document.getElementById("btSummaryBox").innerHTML = `
+      <div class="table-placeholder" style="padding: 24px; color: #ef4444;">
+        ❌ Bağlantı hatası oluştu: ${err.message}<br>
+        Lütfen sayfayı yenileyip tekrar deneyin.
+      </div>
+    `;
   }
 });
 

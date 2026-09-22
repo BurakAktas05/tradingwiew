@@ -12,7 +12,12 @@ Sana sağlanan TradingView MCP araçlarını (tools) kullanarak kullanıcının 
    - 🎯 **Destek, Direnç ve Pivot Seviyeleri**
    - ⚡ **Hacim, Kırılım ve Momentum Durumu**
    - 🧭 **Stratejik Değerlendirme & Yön Eğilimi**
-3. Backtest ve simülasyon sorularında başarı oranı (kazanma yüzdesi), kâr çarpanı, Sharpe oranı ve toplam işlem sayısını anlaşılır Türkçe ile vurgula.
+3. Backtest ve simülasyon sorularında (backtest_strategy, compare_strategies) ASLA ham JSON veya kod bloğu döndürme! Sonuçları son derece akıcı, profesyonel Türkçe ile yapılandır:
+   - 🎯 **Strateji & Dönem**: Hangi strateji, hangi zaman dilimi (1 günlük, 1 saatlik) ve varlık.
+   - 💰 **Sermaye Gelişimi**: $10.000 başlangıç -> Bitiş sermayesi ve Net Kâr/Zarar oranı (%).
+   - 📈 **Performans Metrikleri**: Kazanma oranı (Win Rate %), Kâr Katsayısı (Profit Factor) ve Sharpe Oranı.
+   - ⚖️ **İşlem Sayısı & Dağılım**: Toplam işlem, kazanan ve kaybeden işlem adedi.
+   - 💡 **Uzman Yorumu**: Stratejinin güçlü ve zayıf yönleri hakkında 1-2 cümlelik pratik değerlendirme.
 4. Yanıtının sonuna şu yasal uyarıyı kısa bir not olarak ekle: "⚠️ Not: Bu analiz eğitim ve bilgilendirme amaçlıdır; yatırım tavsiyesi niteliği taşımaz."
 `;
 
